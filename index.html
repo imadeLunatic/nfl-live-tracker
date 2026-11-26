@@ -1,0 +1,3014 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta id="theme-color" name="theme-color" content="#080a0e">
+  <title>NFL Live Scoreboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --team-page-primary: #111318;
+      --team-page-secondary: #111318;
+      --team-card-primary: #17191e;
+      --team-card-secondary: #17191e;
+      --team-control-surface: #111318;
+      --team-panel-surface: #111318;
+      --team-inset-surface: #111318;
+      --team-primary: #fc4c02;
+      --team-secondary: #0a2343;
+      --team-secondary-highlight: #0a2343;
+      --team-accent: #fc4c02;
+      --team-contrast: #080a0e;
+      --white: #f7f8fc;
+      --muted: #9aa9bc;
+      --line: rgba(255, 255, 255, .12);
+      --green: #61d7a2;
+      --red: #ff7373;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--white);
+      background: linear-gradient(125deg, var(--team-page-primary), var(--team-page-secondary) 55%, var(--team-page-primary));
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    button, select { font: inherit; }
+
+    .shell {
+      width: min(1050px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 12px 0 20px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+
+    h2, p { margin: 0; }
+
+    .status-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--team-control-surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .pill.online .dot, .pill.synced .dot { background: var(--green); box-shadow: 0 0 10px rgba(97, 215, 162, .45); }
+    .pill.offline .dot, .pill.error .dot { background: var(--red); }
+
+    main { display: grid; gap: 10px; }
+
+    .card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--team-primary) 38%, var(--line));
+      border-radius: 18px;
+      background:
+        radial-gradient(ellipse at top left, color-mix(in srgb, var(--team-primary) 24%, transparent), transparent 52%),
+        radial-gradient(ellipse at bottom right, color-mix(in srgb, var(--team-secondary-highlight) 26%, transparent), transparent 55%),
+        linear-gradient(125deg, var(--team-card-primary), var(--team-card-secondary));
+      box-shadow: 0 18px 48px rgba(0, 0, 0, .2);
+    }
+    .card::before {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 3px;
+      background: linear-gradient(90deg, var(--team-primary), var(--team-secondary-highlight));
+      content: "";
+      pointer-events: none;
+    }
+
+    .game-choice { display: grid; flex: 1 1 360px; gap: 7px; }
+    label, .control-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    select, button {
+      min-height: 42px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 10px;
+      color: var(--white);
+      background: var(--team-control-surface);
+    }
+
+    select { width: 100%; padding: 0 12px; }
+    button { padding: 0 15px; cursor: pointer; font-weight: 750; transition: border-color .15s, transform .15s, background .15s; }
+    button:hover { border-color: var(--team-accent); transform: translateY(-1px); }
+    button:focus-visible, select:focus-visible { outline: 2px solid var(--team-accent); outline-offset: 2px; }
+    .primary { border-color: var(--team-accent); background: var(--team-accent); color: var(--team-contrast); }
+    .primary:hover { background: color-mix(in srgb, var(--team-accent) 86%, #000); }
+    .scoreboard { padding: 15px 16px 16px; }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-color: #ff8291;
+      background: #c8102e;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .1em;
+      box-shadow: 0 0 14px rgba(255, 40, 70, .5);
+    }
+    .live-badge .dot { background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, .9); }
+
+    .teams {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(190px, .7fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 16px;
+      padding: 0 clamp(4px, 5vw, 56px);
+    }
+    .team { min-width: 0; text-align: center; }
+    .possession-marker {
+      display: grid;
+      height: 24px;
+      place-items: center;
+      color: var(--team-accent);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .18s ease;
+    }
+    .possession-marker.active { opacity: 1; visibility: visible; }
+    .possession-marker svg { width: 29px; height: 22px; filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--team-accent) 48%, transparent)); }
+    .team-name { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .11em; }
+    .team-code-row { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 6px 0 2px; }
+    .team-code { font-size: clamp(22px, 5vw, 36px); font-weight: 900; }
+    .team-record { padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 750; white-space: nowrap; }
+    .team-score { color: var(--team-accent); font-size: clamp(22px, 5vw, 36px); font-weight: 850; line-height: 1.05; }
+    .timeout-indicators { display: flex; justify-content: center; gap: 5px; min-height: 10px; margin-top: 6px; }
+    .timeout-indicator { width: 7px; height: 7px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 50%; background: rgba(255, 255, 255, .14); }
+    .timeout-indicator.available { border-color: var(--team-accent); background: var(--team-accent); box-shadow: 0 0 5px color-mix(in srgb, var(--team-accent) 52%, transparent); }
+    .timeout-indicators.unavailable { opacity: .35; }
+    .game-center { display: grid; justify-items: center; align-content: center; gap: 12px; text-align: center; }
+    .game-state {
+      color: var(--white);
+      font-size: clamp(16px, 3vw, 21px);
+      font-weight: 800;
+      text-align: center;
+    }
+    .kickoff-countdown {
+      color: var(--team-accent);
+      font-size: clamp(12px, 2.2vw, 15px);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+    .broadcast-network {
+      padding: 3px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .situation {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      min-height: 0;
+      margin: 0;
+    }
+    .situation-chip {
+      display: flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--team-panel-surface);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .down-chip {
+      justify-content: center;
+      font-size: clamp(22px, 5vw, 36px);
+      font-weight: 850;
+      line-height: 1.15;
+    }
+
+    .play-panel {
+      padding: 14px 16px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--team-panel-surface);
+    }
+    .play-drive-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+    }
+    .play-heading {
+      margin-bottom: 9px;
+      color: var(--team-accent);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .play-text { min-height: 24px; font-size: 14px; line-height: 1.55; }
+    .play-text.informational::before {
+      content: "INFO · ";
+      color: var(--team-accent);
+      font-size: .82em;
+      font-weight: 900;
+      letter-spacing: .08em;
+    }
+    .player-spotlight {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .player-spotlight-title {
+      margin-bottom: 5px;
+      color: var(--team-accent);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .player-card-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .player-card {
+      display: flex;
+      min-width: 185px;
+      align-items: center;
+      gap: 9px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--team-inset-surface);
+    }
+    .player-card img, .player-avatar-fallback {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 42px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--team-card-secondary);
+    }
+    .player-avatar-fallback { display: grid; place-items: center; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .player-card-info { min-width: 0; }
+    .player-card-name { font-size: 13px; font-weight: 800; }
+    .player-card-meta { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .commentary-panel {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .commentary-title {
+      margin-bottom: 10px;
+      color: var(--team-accent);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .commentary-list { display: grid; gap: 10px; }
+    .commentary-item { padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--team-inset-surface); }
+    .commentary-headline { font-size: 13px; font-weight: 800; line-height: 1.4; }
+    .commentary-headline a { color: var(--white); text-decoration-color: var(--team-accent); text-underline-offset: 3px; }
+    .commentary-description { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .commentary-empty { color: var(--muted); font-size: 12px; }
+
+    .drive-panel {
+      min-width: 0;
+      padding: 10px 12px 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--team-panel-surface);
+    }
+    .drive-scroll {
+      width: 100%;
+      overflow: hidden;
+    }
+    .drive-scroll svg { display: block; width: 100%; min-width: 0; height: auto; }
+    .drive-scroll .drive-empty { display: grid; height: 100%; place-items: center; color: var(--muted); font-size: 12px; text-align: center; }
+    .field-turf { fill: #174b3a; stroke: rgba(255, 255, 255, .5); stroke-width: 1; }
+    .field-endzone-own, .field-endzone-opponent { stroke: rgba(255, 255, 255, .55); stroke-width: 1; }
+    .field-yard-line { stroke: rgba(255, 255, 255, .38); stroke-width: 1; }
+    .field-yard-line.midfield { stroke: rgba(255, 255, 255, .85); stroke-width: 2; }
+    .field-five-yard-tick { stroke: rgba(255, 255, 255, .34); stroke-width: 1; }
+    .field-first-down-marker { stroke: #ffd43b; stroke-width: 2; }
+    .field-first-down-label {
+      fill: #ffd43b;
+      font-size: 9px;
+      font-weight: 900;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .field-yard-label, .field-endzone-label { fill: rgba(255, 255, 255, .86); font-size: 12px; font-weight: 800; text-anchor: middle; }
+    .field-endzone-label { font-size: 10px; letter-spacing: .08em; }
+    .field-row-shade { fill: rgba(255, 255, 255, .045); }
+    .field-row-number { fill: var(--muted); font-size: 12px; font-weight: 700; text-anchor: middle; }
+    .field-play-gain, .field-play-loss, .field-play-zero, .field-play-unknown { stroke-width: 2.5; stroke-linecap: round; }
+    .field-play-special { stroke-width: 2.5; stroke-dasharray: 4 2; stroke-linecap: round; }
+    .field-play-gain { stroke: var(--green); }
+    .field-play-loss { stroke: var(--red); }
+    .field-play-zero { stroke: var(--muted); }
+    .field-play-unknown { stroke: var(--muted); stroke-dasharray: 4 3; }
+    .field-play-penalty { stroke: #ffd43b; }
+    .field-play-start { stroke: #081522; stroke-width: 1; }
+    .field-play-start { fill: var(--white); }
+    .field-special-marker { pointer-events: none; }
+    .field-event-markers { pointer-events: none; }
+    .field-event-badge { fill: #081522; stroke: #fff; stroke-width: 1; }
+    .field-event-badge-text {
+      fill: #fff;
+      font-size: 8px;
+      font-weight: 900;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .field-special-marker-text {
+      fill: #fff;
+      font-size: 7px;
+      font-weight: 900;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .field-play-hit { fill: transparent; pointer-events: all; cursor: pointer; }
+    .field-play-hit.is-selected { fill: rgba(255, 212, 59, .14); stroke: #ffd43b; stroke-width: 1; }
+    .play-tooltip {
+      margin: 8px 0 0;
+      padding: 9px 12px;
+      border: 1px solid var(--team-accent);
+      border-radius: 9px;
+      color: var(--white);
+      background: rgba(8, 17, 27, .96);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .drive-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 12px; margin-top: 6px; color: var(--muted); font-size: 10px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+    .legend-swatch { width: 8px; height: 8px; border-radius: 2px; }
+    .legend-special-letter { display: inline-grid; width: 12px; height: 12px; place-items: center; border-radius: 50%; color: var(--team-contrast); background: var(--team-accent); font-size: 8px; font-weight: 900; }
+    .legend-field-goal { display: inline-flex; align-items: center; gap: 1px; color: var(--team-accent); font-size: 11px; font-weight: 900; }
+    .legend-field-goal .good { color: var(--green); }
+    .legend-field-goal .missed { color: var(--red); }
+    .legend-event {
+      display: inline-grid;
+      min-width: 22px;
+      min-height: 16px;
+      padding: 0 3px;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, .8);
+      border-radius: 4px;
+      color: #fff;
+      background: #081522;
+      font-size: 8px;
+      font-weight: 900;
+    }
+    .legend-positive { background: var(--green); }
+    .legend-negative { background: var(--red); }
+    .legend-penalty { background: #ffd43b; }
+    .legend-zero { background: var(--muted); }
+    .legend-unknown { border: 1px dashed var(--muted); }
+
+    .settings-card { padding: 0 16px 14px; }
+    .tracker-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) auto minmax(145px, .55fr) minmax(170px, .65fr);
+      align-items: end;
+      gap: 12px;
+      margin: 0 0 18px;
+    }
+    .settings-summary {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .settings-summary::-webkit-details-marker { display: none; }
+    .settings-summary::after { content: "+"; color: var(--team-accent); font-size: 22px; font-weight: 700; }
+    .settings-card[open] .settings-summary::after { content: "−"; }
+    .settings-summary-title { font-size: 14px; font-weight: 800; }
+    .settings-summary-hint { margin-left: 8px; color: var(--muted); font-size: 11px; font-weight: 500; }
+    .audio-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 13px; }
+    h2 { font-size: 15px; }
+    .audio-caption { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .audio-controls { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); align-items: end; gap: 10px; }
+    .field { display: grid; gap: 7px; }
+
+    .field textarea {
+      width: 100%;
+      min-height: 88px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 10px;
+      color: var(--white);
+      background: var(--team-control-surface);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.45;
+      resize: vertical;
+    }
+    .field textarea:focus-visible { outline: 2px solid var(--team-accent); outline-offset: 2px; }
+    .field-hint { color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .rooting-phrase-fields {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .field input[type="range"] { width: 100%; accent-color: var(--team-accent); }
+    .field input[type="number"] {
+      width: 100%;
+      min-height: 40px;
+      padding: 0 12px;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 10px;
+      color: var(--white);
+      background: var(--team-control-surface);
+      font: inherit;
+    }
+    .field input[type="number"]:focus-visible { outline: 2px solid var(--team-accent); outline-offset: 2px; }
+    .audio-test-buttons { display: grid; grid-template-columns: 1fr; gap: 6px; }
+    .audio-test-buttons button { min-height: 40px; padding: 0 8px; font-size: 12px; }
+    .range-value { color: var(--muted); font-size: 11px; }
+    .audio-footnote { margin-top: 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .audio-status { min-height: 17px; margin-top: 9px; color: var(--team-accent); font-size: 12px; }
+    .hidden { display: none !important; }
+    footer { padding: 15px 3px 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .error-text { color: var(--red); }
+
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 20px, 620px); padding-top: 16px; }
+      header { justify-content: flex-end; }
+      .teams { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+      .team:last-child { grid-column: 2; grid-row: 1; }
+      .game-center { grid-column: 1 / -1; grid-row: 2; }
+      .audio-controls { grid-template-columns: 1fr 1fr; }
+      .rooting-phrase-fields { gap: 16px; }
+      .audio-controls button { min-height: 42px; }
+      .tracker-controls { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 721px) and (max-width: 900px) {
+      .tracker-controls { grid-template-columns: minmax(0, 1fr) auto; }
+    }
+    @media (max-width: 430px) {
+      .teams { gap: 7px; padding-inline: 0; }
+      .audio-controls { grid-template-columns: 1fr; }
+      .audio-heading { align-items: flex-start; flex-direction: column; }
+    }
+    @media (min-width: 721px) and (max-height: 820px) {
+      .shell { padding-top: 8px; }
+      header { margin-bottom: 8px; }
+      .scoreboard { padding-top: 10px; padding-bottom: 10px; }
+      .situation-chip { min-height: 30px; }
+    }
+    @media (min-width: 1800px) {
+      .shell { width: min(2160px, calc(100% - 96px)); padding: 28px 0 40px; }
+      header { gap: 28px; margin-bottom: 22px; }
+      .status-row { gap: 12px; }
+      .pill { min-height: 44px; padding: 0 18px; font-size: 15px; }
+      .dot { width: 10px; height: 10px; }
+      main { gap: 18px; }
+      .card { border-radius: 24px; }
+      .game-choice { flex-basis: 560px; gap: 10px; }
+      label, .control-label { font-size: 14px; }
+      select, button { min-height: 54px; border-radius: 12px; font-size: 16px; }
+      .scoreboard { padding: 28px 32px 32px; }
+
+      .teams { gap: 24px; }
+      .possession-marker { height: 36px; }
+      .possession-marker svg { width: 42px; height: 32px; }
+      .team-name { font-size: 16px; }
+      .team-code { font-size: 42px; }
+      .team-record { padding: 6px 11px; font-size: 16px; }
+      .team-score { font-size: 42px; }
+      .timeout-indicators { gap: 8px; min-height: 14px; margin-top: 8px; }
+      .timeout-indicator { width: 10px; height: 10px; }
+      .game-center { gap: 16px; }
+      .game-state { font-size: 24px; }
+      .situation { gap: 10px; }
+      .situation-chip { min-height: 42px; padding: 0 16px; font-size: 15px; }
+      .down-chip { min-height: 58px; font-size: 42px; }
+      .play-drive-grid { gap: 16px; }
+      .play-panel { padding: 20px 24px; }
+      .play-heading { font-size: 14px; }
+      .play-text { font-size: 21px; line-height: 1.6; }
+      .drive-panel { padding: 18px 20px 14px; }
+      .drive-scroll .drive-empty { font-size: 16px; }
+      .drive-legend { gap: 18px; margin-top: 10px; font-size: 14px; }
+      .legend-swatch { width: 12px; height: 12px; }
+      .player-spotlight { margin-top: 18px; padding-top: 16px; }
+      .player-spotlight-title { font-size: 14px; }
+      .player-card { min-width: 230px; gap: 12px; padding: 10px 14px; }
+      .player-card img, .player-avatar-fallback { width: 54px; height: 54px; flex-basis: 54px; }
+      .player-card-name { font-size: 17px; }
+      .player-card-meta { font-size: 14px; }
+      .commentary-panel { margin-top: 18px; padding-top: 16px; }
+      .commentary-title { font-size: 14px; }
+      .commentary-item { padding: 14px; }
+      .commentary-headline { font-size: 17px; }
+      .commentary-description, .commentary-empty { font-size: 15px; }
+      .field input[type="number"] { min-height: 50px; border-radius: 12px; font-size: 15px; }
+      .settings-card { padding: 0 26px 22px; }
+      .tracker-controls { gap: 16px; margin-bottom: 22px; }
+      .settings-summary { min-height: 62px; }
+      .settings-summary-title { font-size: 18px; }
+      .settings-summary-hint { font-size: 14px; }
+      h2 { font-size: 20px; }
+      .audio-controls { gap: 16px; }
+      .field select, .audio-test-buttons button { min-height: 50px; font-size: 15px; }
+      .field textarea { min-height: 100px; font-size: 15px; }
+      .audio-footnote, .audio-status { font-size: 14px; }
+      footer { padding-top: 22px; font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="status-row" aria-live="polite">
+        <span id="live-badge" class="pill live-badge hidden"><span class="dot"></span><span>LIVE</span></span>
+        <span id="network-pill" class="pill"><span class="dot"></span><span id="network-label">Checking network</span></span>
+        <span id="sync-pill" class="pill"><span class="dot"></span><span id="sync-label">Waiting for ESPN</span></span>
+      </div>
+    </header>
+
+    <main>
+      <section class="card" aria-label="Live scoreboard">
+        <div class="scoreboard">
+          <div class="teams">
+            <div class="team">
+              <div id="left-possession-marker" class="possession-marker" role="img" aria-label="No possession indicator">
+                <svg viewBox="0 0 32 24" aria-hidden="true">
+                  <path d="M2.1 13.6C4.7 6.2 12.3 1.9 20.3 2.8c4.9.6 8.1 3 9.6 5.7-2.6 7.4-10.2 11.7-18.2 10.8-4.9-.6-8.1-3-9.6-5.7Z" fill="currentColor" transform="rotate(-18 16 12)"/>
+                  <path d="m11 17 10-10M14 12l2 2m0-4 2 2m0-4 2 2" fill="none" stroke="#080a0e" stroke-linecap="round" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <div id="left-name" class="team-name">DENVER BRONCOS</div>
+              <div class="team-code-row">
+                <span id="left-code" class="team-code">DEN</span>
+                <span id="left-record" class="team-record">—</span>
+                <span id="left-score" class="team-score">--</span>
+              </div>
+              <div id="left-timeouts" class="timeout-indicators" role="img" aria-label="Timeouts unavailable">
+                <span class="timeout-indicator"></span><span class="timeout-indicator"></span><span class="timeout-indicator"></span>
+              </div>
+            </div>
+            <div class="game-center">
+              <div id="game-state" class="game-state hidden">Loading ESPN game data…</div>
+              <span id="broadcast-network" class="broadcast-network hidden"></span>
+              <p id="kickoff-countdown" class="kickoff-countdown hidden" role="timer" aria-live="off"></p>
+              <div class="situation">
+                <div id="down-chip" class="situation-chip down-chip">—</div>
+              </div>
+            </div>
+            <div class="team">
+              <div id="right-possession-marker" class="possession-marker" role="img" aria-label="No possession indicator">
+                <svg viewBox="0 0 32 24" aria-hidden="true">
+                  <path d="M2.1 13.6C4.7 6.2 12.3 1.9 20.3 2.8c4.9.6 8.1 3 9.6 5.7-2.6 7.4-10.2 11.7-18.2 10.8-4.9-.6-8.1-3-9.6-5.7Z" fill="currentColor" transform="rotate(-18 16 12)"/>
+                  <path d="m11 17 10-10M14 12l2 2m0-4 2 2m0-4 2 2" fill="none" stroke="#080a0e" stroke-linecap="round" stroke-width="1.5"/>
+                </svg>
+              </div>
+              <div id="right-name" class="team-name">OPPONENT</div>
+              <div class="team-code-row">
+                <span id="right-code" class="team-code">---</span>
+                <span id="right-record" class="team-record">—</span>
+                <span id="right-score" class="team-score">--</span>
+              </div>
+              <div id="right-timeouts" class="timeout-indicators" role="img" aria-label="Timeouts unavailable">
+                <span class="timeout-indicator"></span><span class="timeout-indicator"></span><span class="timeout-indicator"></span>
+              </div>
+            </div>
+          </div>
+          <div class="play-drive-grid">
+          <section class="drive-panel" aria-label="Recent game plays">
+            <div id="drive-chart" class="drive-scroll" aria-live="polite">
+              <p class="drive-empty">Recent game plays appear here.</p>
+            </div>
+            <div class="drive-legend" aria-hidden="true">
+              <span class="legend-item"><span class="legend-swatch legend-positive"></span>Gain</span>
+              <span class="legend-item"><span class="legend-swatch legend-negative"></span>Loss</span>
+              <span class="legend-item"><span class="legend-swatch legend-penalty"></span>Penalty</span>
+              <span class="legend-item"><span class="legend-swatch legend-zero"></span>No yards</span>
+              <span class="legend-item"><span class="legend-swatch legend-unknown"></span>Unknown</span>
+              <span class="legend-item"><span class="legend-event">+6</span>Score</span>
+              <span class="legend-item"><span class="legend-event">INT</span>Turnover</span>
+              <span class="legend-item"><span class="legend-field-goal">Y <span class="good">✓</span><span class="missed">×</span></span>Field goal</span>
+              <span class="legend-item"><span class="legend-special-letter">P</span>Punt</span>
+              <span class="legend-item"><span class="legend-special-letter">K</span>Kickoff</span>
+            </div>
+          </section>
+          <div class="play-panel">
+            <p class="play-heading">Last play</p>
+            <p id="last-play" class="play-text">Waiting for ESPN play-by-play…</p>
+            <section id="player-spotlight" class="player-spotlight hidden" aria-live="polite" aria-label="Key players from a recent play">
+              <p class="player-spotlight-title">Key players from this play</p>
+              <div id="player-card-list" class="player-card-list"></div>
+            </section>
+            <section id="commentary-panel" class="commentary-panel hidden" aria-label="ESPN news and analysis">
+              <p class="commentary-title">ESPN News &amp; Analysis</p>
+              <div id="commentary-list" class="commentary-list"></div>
+            </section>
+          </div>
+          </div>
+        </div>
+      </section>
+
+      <details id="settings-panel" class="card settings-card">
+        <summary class="settings-summary">
+          <span><span class="settings-summary-title">Game &amp; audio settings</span><span class="settings-summary-hint">Saved automatically in this browser</span></span>
+        </summary>
+        <div class="tracker-controls">
+          <div class="game-choice">
+            <label for="game-select">Track a game</label>
+            <select id="game-select" aria-label="Select a game in the current NFL week">
+              <option value="DEN">Loading games...</option>
+            </select>
+          </div>
+          <button id="keep-awake-button" type="button" aria-pressed="false">Keep screen awake</button>
+          <div class="field">
+            <label for="history-play-count">Recent plays to show</label>
+            <select id="history-play-count">
+              <option value="5">5 plays</option>
+              <option value="10">10 plays</option>
+              <option value="15">15 plays</option>
+              <option value="20">20 plays</option>
+              <option value="30">30 plays</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="refresh-interval">Refresh interval</label>
+            <select id="refresh-interval">
+              <option value="15">Every 15 seconds</option>
+              <option value="30">Every 30 seconds</option>
+              <option value="45">Every 45 seconds</option>
+              <option value="60">Every 60 seconds</option>
+              <option value="90">Every 90 seconds</option>
+            </select>
+          </div>
+        </div>
+        <div class="audio-heading">
+          <div>
+            <h2 id="audio-title">Game sounds</h2>
+            <p class="audio-caption">Use this device's speakers or route audio to a paired Bluetooth speaker.</p>
+          </div>
+          <button id="enable-audio" class="primary" type="button">Enable Audio</button>
+        </div>
+        <div class="audio-controls">
+          <div class="field">
+            <label for="audio-mode">Audio updates</label>
+            <select id="audio-mode">
+              <option value="effects">Original key-play sound effects</option>
+              <option value="speech">Spoken play descriptions</option>
+              <option value="both">Speech + key-play effects</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="favorite-team">Favorite team</label>
+            <select id="favorite-team"></select>
+          </div>
+          <div class="field">
+            <label for="rooting-team">Team you're rooting for</label>
+            <select id="rooting-team"></select>
+          </div>
+          <div class="field">
+            <label for="rooting-phrases-mode">Rooting-team phrases</label>
+            <select id="rooting-phrases-mode">
+              <option value="off">Off</option>
+              <option value="on">On for key plays</option>
+            </select>
+          </div>
+          <div id="rooting-phrase-fields" class="rooting-phrase-fields hidden">
+            <div class="field">
+              <label for="positive-phrases">Positive phrases</label>
+              <textarea id="positive-phrases" rows="3" maxlength="1200"></textarea>
+              <span class="field-hint">One phrase per line. Use {team} or {play} placeholders.</span>
+            </div>
+            <div class="field">
+              <label for="negative-phrases">Negative phrases</label>
+              <textarea id="negative-phrases" rows="3" maxlength="1200"></textarea>
+              <span class="field-hint">Used when the opponent benefits from a key play.</span>
+            </div>
+          </div>
+          <div id="voice-field" class="field">
+            <label for="voice-select">Speech voice</label>
+            <select id="voice-select"><option value="">System default voice</option></select>
+          </div>
+          <div id="rate-field" class="field">
+            <label for="speech-rate">Speech speed <span id="rate-value" class="range-value">1.0×</span></label>
+            <input id="speech-rate" type="range" min="0.75" max="1.25" step="0.05" value="1">
+          </div>
+          <div class="field">
+            <label for="player-details-mode">Player details display</label>
+            <select id="player-details-mode">
+              <option value="until-next-play">Until next play</option>
+              <option value="timed">For a set time</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="extra-commentary">Extra commentary</label>
+            <select id="extra-commentary">
+              <option value="off">Off</option>
+              <option value="on">Latest ESPN news &amp; analysis</option>
+            </select>
+          </div>
+          <div id="player-details-duration-field" class="field hidden">
+            <label for="player-details-duration">Display time (seconds)</label>
+            <input id="player-details-duration" type="number" min="1" max="60" step="1" value="10" inputmode="numeric">
+          </div>
+          <div class="audio-test-buttons">
+            <button id="test-audio" type="button">Test selected audio</button>
+          </div>
+        </div>
+        <p class="audio-footnote">Key-play sound effects are generated in the browser. Rooting-team phrases are optional spoken callouts for key plays; customize one phrase per line, using {team} for your rooting team or {play} for the play description. Speech uses voices installed on this device. Pair/select your Bluetooth speaker in sound settings first. Audio starts only after you enable it.</p>
+        <p id="audio-status" class="audio-status" role="status"></p>
+      </details>
+    </main>
+
+    <footer>
+      Game information comes directly from ESPN's public NFL endpoints. Refresh timing, recent-play history, and preferences are stored only in this browser.
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard";
+      const BRONCOS_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/den/schedule";
+      const TEAM_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/";
+      const SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=";
+      const DEFAULT_REFRESH_INTERVAL_SECONDS = 30;
+      const REFRESH_INTERVAL_OPTIONS = [15, 30, 45, 60, 90];
+      const DEFAULT_HISTORY_PLAY_COUNT = 15;
+      const HISTORY_PLAY_COUNT_OPTIONS = [5, 10, 15, 20, 30];
+      const MAX_STORED_HISTORY_PLAYS = 100;
+      const TEAM_SPEECH_NAMES = {
+        ARI: "Arizona", ATL: "Atlanta", BAL: "Baltimore", BUF: "Buffalo",
+        CAR: "Carolina", CHI: "Chicago", CIN: "Cincinnati", CLE: "Cleveland",
+        DAL: "Dallas", DEN: "Denver", DET: "Detroit", GB: "Green Bay",
+        HOU: "Houston", IND: "Indianapolis", JAX: "Jacksonville", KC: "Kansas City",
+        LAC: "Los Angeles Chargers", LAR: "Los Angeles Rams", LV: "Las Vegas",
+        MIA: "Miami", MIN: "Minnesota", NE: "New England", NO: "New Orleans",
+        NYG: "New York Giants", NYJ: "New York Jets", PHI: "Philadelphia",
+        PIT: "Pittsburgh", SEA: "Seattle", SF: "San Francisco",
+        TB: "Tampa Bay", TEN: "Tennessee", WSH: "Washington"
+      };
+      const NFL_TEAMS = [
+        ["ARI", "Arizona Cardinals"], ["ATL", "Atlanta Falcons"],
+        ["BAL", "Baltimore Ravens"], ["BUF", "Buffalo Bills"],
+        ["CAR", "Carolina Panthers"], ["CHI", "Chicago Bears"],
+        ["CIN", "Cincinnati Bengals"], ["CLE", "Cleveland Browns"],
+        ["DAL", "Dallas Cowboys"], ["DEN", "Denver Broncos"],
+        ["DET", "Detroit Lions"], ["GB", "Green Bay Packers"],
+        ["HOU", "Houston Texans"], ["IND", "Indianapolis Colts"],
+        ["JAX", "Jacksonville Jaguars"], ["KC", "Kansas City Chiefs"],
+        ["LAC", "Los Angeles Chargers"], ["LAR", "Los Angeles Rams"],
+        ["LV", "Las Vegas Raiders"], ["MIA", "Miami Dolphins"],
+        ["MIN", "Minnesota Vikings"], ["NE", "New England Patriots"],
+        ["NO", "New Orleans Saints"], ["NYG", "New York Giants"],
+        ["NYJ", "New York Jets"], ["PHI", "Philadelphia Eagles"],
+        ["PIT", "Pittsburgh Steelers"], ["SEA", "Seattle Seahawks"],
+        ["SF", "San Francisco 49ers"], ["TB", "Tampa Bay Buccaneers"],
+        ["TEN", "Tennessee Titans"], ["WSH", "Washington Commanders"]
+      ];
+      const TEAM_COLORS = {
+        ARI: ["#a40227", "#ffffff"], ATL: ["#a71930", "#000000"],
+        BAL: ["#29126f", "#000000"], BUF: ["#00338d", "#d50a0a"],
+        CAR: ["#0085ca", "#000000"], CHI: ["#0b1c3a", "#e64100"],
+        CIN: ["#fb4f14", "#000000"], CLE: ["#472a08", "#ff3c00"],
+        DAL: ["#002a5c", "#b0b7bc"], DEN: ["#fc4c02", "#0a2343"],
+        DET: ["#0076b6", "#bbbbbb"], GB: ["#204e32", "#ffb612"],
+        HOU: ["#021018", "#eb0028"], IND: ["#003b75", "#ffffff"],
+        JAX: ["#007487", "#d7a22a"], KC: ["#e31837", "#ffb612"],
+        LAC: ["#0080c6", "#ffc20e"], LAR: ["#003594", "#ffd100"],
+        LV: ["#000000", "#a5acaf"], MIA: ["#008e97", "#fc4c02"],
+        MIN: ["#4f2683", "#ffc62f"], NE: ["#002a5c", "#c60c30"],
+        NO: ["#d3bc8d", "#000000"], NYG: ["#003c7f", "#c9243f"],
+        NYJ: ["#115740", "#ffffff"], PHI: ["#06424d", "#000000"],
+        PIT: ["#000000", "#ffb612"], SF: ["#aa0000", "#b3995d"],
+        SEA: ["#002a5c", "#69be28"], TB: ["#bd1c36", "#3e3a35"],
+        TEN: ["#4495d2", "#001532"], WSH: ["#5a1414", "#ffb612"]
+      };
+      const DEFAULT_POSITIVE_PHRASES = [
+        "Let's go, {team}!",
+        "That's what I'm talking about!",
+        "Big play for {team}!"
+      ].join("\n");
+      const DEFAULT_NEGATIVE_PHRASES = [
+        "Not what we wanted.",
+        "Come on, {team}, get it back!",
+        "They got the better of us on that one."
+      ].join("\n");
+      const app = {
+        broncosGame: null,
+        currentGame: null,
+        currentWeekGames: [],
+        selectedId: "DEN",
+        lastPlayByEvent: new Map(),
+        teamRecords: new Map(),
+        driveState: {
+          eventId: "",
+          driveId: "",
+          possessionTeamId: "",
+          drive: null,
+          history: []
+        },
+        playerSpotlight: {
+          eventId: "",
+          seenPlayIds: new Set(),
+          pending: [],
+          activePlay: null,
+          timerId: 0
+        },
+        audioEnabled: false,
+        audioContext: null,
+        keepAwakeRequested: false,
+        screenWakeLock: null,
+        voices: [],
+        storageAvailable: true,
+        refreshInProgress: false,
+        refreshTimer: 0,
+        kickoffCountdownTimer: 0
+      };
+
+      const el = (id) => document.getElementById(id);
+      const gameSelect = el("game-select");
+      const settingsPanel = el("settings-panel");
+      const audioMode = el("audio-mode");
+      const favoriteTeamSelect = el("favorite-team");
+      const rootingTeamSelect = el("rooting-team");
+      const rootingPhrasesMode = el("rooting-phrases-mode");
+      const positivePhrases = el("positive-phrases");
+      const negativePhrases = el("negative-phrases");
+      const voiceSelect = el("voice-select");
+      const audioStatus = el("audio-status");
+
+      function readPreference(key, fallback) {
+        try {
+          return localStorage.getItem(key) ?? fallback;
+        } catch (error) {
+          app.storageAvailable = false;
+          console.warn("Browser storage is unavailable; preferences will not persist.", error);
+          return fallback;
+        }
+      }
+
+      function writePreference(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (error) {
+          app.storageAvailable = false;
+          console.warn("Could not save browser preference.", error);
+        }
+      }
+
+      function readPlayHistory(eventId) {
+        const saved = readPreference(`playHistory:${eventId}`, "");
+        if (!saved) return { driveId: "", plays: [] };
+        try {
+          const parsed = JSON.parse(saved);
+          if (!Array.isArray(parsed.plays)) throw new Error("Saved play history is malformed.");
+          return {
+            driveId: typeof parsed.driveId === "string" ? parsed.driveId : "",
+            plays: parsed.plays
+              .filter((play) => play && typeof play.id === "string" &&
+                typeof play.text === "string")
+              .slice(-MAX_STORED_HISTORY_PLAYS)
+          };
+        } catch (error) {
+          console.warn(`Could not read saved play history for ${eventId}.`, error);
+          return { driveId: "", plays: [] };
+        }
+      }
+
+      function persistPlayHistory(eventId, history) {
+        const plays = history.plays.slice(-MAX_STORED_HISTORY_PLAYS);
+        writePreference(`playHistory:${eventId}`, JSON.stringify({
+          driveId: history.driveId,
+          plays
+        }));
+        return plays;
+      }
+
+      function extendPlayHistory(eventId, currentDrive) {
+        const history = app.driveState.eventId === eventId
+          ? app.driveState.history
+          : readPlayHistory(eventId).plays;
+        const positions = new Map(history.map((play, index) => [play.id, index]));
+        for (const play of currentDrive.plays) {
+          const enrichedPlay = {
+            ...play,
+            teamId: currentDrive.teamId,
+            teamName: currentDrive.teamName,
+            teamAbbreviation: currentDrive.teamAbbreviation
+          };
+          const existingIndex = positions.get(enrichedPlay.id);
+          if (existingIndex === undefined) {
+            positions.set(enrichedPlay.id, history.length);
+            history.push(enrichedPlay);
+          } else {
+            history[existingIndex] = enrichedPlay;
+          }
+        }
+        const plays = persistPlayHistory(eventId, {
+          driveId: currentDrive.id,
+          plays: history
+        });
+        return {
+          eventId,
+          driveId: currentDrive.id,
+          possessionTeamId: currentDrive.teamId,
+          history: plays,
+          drive: {
+            ...currentDrive,
+            plays
+          }
+        };
+      }
+
+      function restorePlayHistory(eventId) {
+        const history = readPlayHistory(eventId);
+        const latestPlay = history.plays[history.plays.length - 1];
+        return {
+          eventId,
+          driveId: history.driveId,
+          possessionTeamId: latestPlay?.teamId ?? "",
+          history: history.plays,
+          drive: latestPlay
+            ? {
+              id: history.driveId,
+              teamId: latestPlay.teamId,
+              teamName: latestPlay.teamName,
+              teamAbbreviation: latestPlay.teamAbbreviation,
+              plays: history.plays
+            }
+            : null
+        };
+      }
+
+      function updateNetworkStatus() {
+        const online = navigator.onLine;
+        el("network-pill").className = `pill ${online ? "online" : "offline"}`;
+        el("network-label").textContent = online ? "Network online" : "Network offline";
+      }
+
+      async function requestScreenWakeLock() {
+        if (!app.keepAwakeRequested || document.visibilityState !== "visible") return;
+        if (app.screenWakeLock && !app.screenWakeLock.released) return;
+        if (!("wakeLock" in navigator)) {
+          el("keep-awake-button").setAttribute("aria-pressed", "true");
+          el("keep-awake-button").textContent = "Screen awake requested";
+          el("keep-awake-button").title =
+            "Screen wake lock is not supported in this browser. Adjust the laptop's power settings to keep the display on.";
+          return;
+        }
+
+        try {
+          app.screenWakeLock = await navigator.wakeLock.request("screen");
+          app.screenWakeLock.addEventListener("release", () => {
+            app.screenWakeLock = null;
+            if (app.keepAwakeRequested && document.visibilityState === "visible") {
+              el("keep-awake-button").title =
+                "The browser released the screen lock. The saved preference will be retried when you return to this tab.";
+              el("keep-awake-button").setAttribute("aria-pressed", "true");
+              el("keep-awake-button").textContent = "Screen awake requested";
+            }
+          }, { once: true });
+          writePreference("keepAwake", "true");
+          el("keep-awake-button").setAttribute("aria-pressed", "true");
+          el("keep-awake-button").textContent = "Screen will stay awake";
+          el("keep-awake-button").removeAttribute("title");
+        } catch (error) {
+          console.warn("Could not acquire a screen wake lock.", error);
+          app.screenWakeLock = null;
+          el("keep-awake-button").setAttribute("aria-pressed", "true");
+          el("keep-awake-button").textContent = "Screen awake requested";
+          el("keep-awake-button").title =
+            `Could not keep the screen awake: ${error.message}. Check browser and laptop power settings.`;
+        }
+      }
+
+      async function toggleScreenWakeLock() {
+        if (app.keepAwakeRequested) {
+          app.keepAwakeRequested = false;
+          writePreference("keepAwake", "false");
+          if (app.screenWakeLock) {
+            const lock = app.screenWakeLock;
+            app.screenWakeLock = null;
+            await lock.release();
+          }
+          el("keep-awake-button").setAttribute("aria-pressed", "false");
+          el("keep-awake-button").textContent = "Keep screen awake";
+          el("keep-awake-button").removeAttribute("title");
+          return;
+        }
+
+        app.keepAwakeRequested = true;
+        writePreference("keepAwake", "true");
+        await requestScreenWakeLock();
+      }
+
+      function setSyncStatus(text, kind, details = "") {
+        el("sync-pill").className = `pill ${kind}`;
+        el("sync-label").textContent = text;
+        el("sync-pill").title = details;
+        el("sync-pill").setAttribute("aria-label", details ? `${text}: ${details}` : text);
+      }
+
+      async function fetchJson(url) {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`ESPN returned HTTP ${response.status}.`);
+        }
+        return response.json();
+      }
+
+      async function fillMissingTeamRecords(game, failures) {
+        const missing = game.teams.filter((team) =>
+          !team.record && !app.teamRecords.has(team.abbreviation));
+        await Promise.all(missing.map(async (team) => {
+          try {
+            const data = await fetchJson(
+              `${TEAM_URL}${encodeURIComponent(team.abbreviation.toLowerCase())}?enable=record`
+            );
+            const totalRecord = (data?.team?.record?.items ?? [])
+              .find((record) => record.type === "total")?.summary;
+            app.teamRecords.set(team.abbreviation, cleanText(totalRecord, ""));
+          } catch (error) {
+            failures.push(`Team record for ${team.abbreviation} unavailable: ${error.message}`);
+          }
+        }));
+        return {
+          ...game,
+          teams: game.teams.map((team) => ({
+            ...team,
+            record: team.record || app.teamRecords.get(team.abbreviation) || ""
+          }))
+        };
+      }
+
+      function cleanText(value, fallback = "") {
+        return typeof value === "string" && value.trim() ? value.trim() : fallback;
+      }
+
+      function normalizeTeamColor(value, fallback) {
+        const color = cleanText(value, "").replace(/^#/, "");
+        return /^[\da-f]{6}$/i.test(color) ? `#${color}` : fallback;
+      }
+
+      function getPlayYardage(play) {
+        const rawYardage = play.statYardage;
+        const numericYardage = Number(rawYardage);
+        if (rawYardage !== null && rawYardage !== undefined &&
+            rawYardage !== "" && Number.isFinite(numericYardage)) {
+          return numericYardage;
+        }
+
+        const text = cleanText(play.text);
+        const loss = text.match(/\bfor\s+(?:a\s+)?loss of\s+(\d+)\s+yards?\b/i);
+        if (loss) return -Number(loss[1]);
+        const gain = text.match(/\bfor\s+(\d+)\s+yards?\b/i);
+        return gain ? Number(gain[1]) : null;
+      }
+
+      function getPenaltyYardage(text, offenseTeamId, teams) {
+        const penaltyMatches = [...text.matchAll(
+          /\bPENALTY on ([A-Z]{2,3})[^,]*,\s*([^,]+),\s*(\d+)\s+yards?\b/gi
+        )];
+        let yardage = 0;
+        let foundAcceptedPenalty = false;
+
+        for (let index = 0; index < penaltyMatches.length; index += 1) {
+          const match = penaltyMatches[index];
+          const nextPenalty = penaltyMatches[index + 1];
+          const details = text.slice(match.index, nextPenalty?.index ?? text.length);
+          if (/\b(?:declined|offsetting)\b/i.test(details)) continue;
+
+          const penalizedTeam = teams.find((team) =>
+            team.abbreviation.toUpperCase() === match[1].toUpperCase());
+          const isOffensivePenalty = penalizedTeam
+            ? penalizedTeam.id === offenseTeamId
+            : /\boffensive\b/i.test(match[2]);
+          const isDefensivePenalty = penalizedTeam
+            ? penalizedTeam.id !== offenseTeamId
+            : /\bdefensive\b/i.test(match[2]);
+          if (!isOffensivePenalty && !isDefensivePenalty) continue;
+
+          const penaltyYards = Number(match[3]);
+          yardage += isOffensivePenalty ? -penaltyYards : penaltyYards;
+          foundAcceptedPenalty = true;
+        }
+
+        return foundAcceptedPenalty ? yardage : null;
+      }
+
+      function normalizeEvent(event) {
+        const competition = event?.competitions?.[0];
+        const competitors = competition?.competitors ?? [];
+        if (competitors.length < 2) return null;
+
+        const broadcastEntries = [
+          ...(Array.isArray(competition.broadcasts)
+            ? competition.broadcasts : competition.broadcasts ? [competition.broadcasts] : []),
+          ...(Array.isArray(event.broadcasts)
+            ? event.broadcasts : event.broadcasts ? [event.broadcasts] : [])
+        ];
+        const broadcastNames = [];
+        for (const broadcast of broadcastEntries) {
+          const names = Array.isArray(broadcast?.names)
+            ? broadcast.names
+            : typeof broadcast === "string" ? [broadcast] : [];
+          for (const name of names) {
+            const rawName = cleanText(name, "");
+            const cleanedName = /^[a-z]{2,4}$/i.test(rawName)
+              ? rawName.toUpperCase()
+              : rawName;
+            if (cleanedName && !broadcastNames.some((existing) =>
+              existing.toLowerCase() === cleanedName.toLowerCase())) {
+              broadcastNames.push(cleanedName);
+            }
+          }
+        }
+        const status = competition.status ?? {};
+        const state = status.type?.state ?? "";
+        const situation = competition.situation ?? {};
+        const possessionId = String(situation.possession ?? "");
+        const possessionAbbreviation = cleanText(situation.possessionText, "").split(/\s+/)[0];
+        const teams = competitors.slice(0, 2).map((competitor) => {
+          const abbreviation = cleanText(competitor.team?.abbreviation, "NFL");
+          const [defaultPrimary, defaultSecondary] = TEAM_COLORS[abbreviation] ?? TEAM_COLORS.DEN;
+          return {
+            id: String(competitor.id ?? ""),
+            homeAway: cleanText(competitor.homeAway, ""),
+            abbreviation,
+            name: cleanText(competitor.team?.displayName, abbreviation),
+            primaryColor: normalizeTeamColor(competitor.team?.color, defaultPrimary),
+            secondaryColor: normalizeTeamColor(competitor.team?.alternateColor, defaultSecondary),
+            record: cleanText(
+              (competitor.records ?? []).find((record) =>
+                record.name === "overall" || record.type === "total")?.summary,
+              ""
+            ),
+            timeouts: Number.isInteger(Number(
+              situation[competitor.homeAway === "home" ? "homeTimeouts" : "awayTimeouts"]
+            )) && situation[competitor.homeAway === "home" ? "homeTimeouts" : "awayTimeouts"] !== null
+              ? Number(situation[competitor.homeAway === "home" ? "homeTimeouts" : "awayTimeouts"])
+              : null,
+            score: state === "in" || state === "post" ? cleanText(String(competitor.score ?? "0"), "0") : "--"
+          };
+        });
+        const possessionTeam = teams.find((team) => team.id === possessionId) ??
+          teams.find((team) => team.abbreviation === possessionAbbreviation);
+        const situationYardLine = situation.yardLine !== null &&
+          situation.yardLine !== undefined &&
+          Number.isFinite(Number(situation.yardLine))
+          ? Math.max(0, Math.min(100, Number(situation.yardLine)))
+          : null;
+        const yardsToFirstDown = situation.distance !== null &&
+          situation.distance !== undefined &&
+          Number.isFinite(Number(situation.distance)) &&
+          Number(situation.distance) >= 0
+          ? Number(situation.distance)
+          : null;
+        let gameStatus = cleanText(status.type?.shortDetail, "Game status unavailable");
+        if (state === "in") {
+          const period = Number(status.period ?? 0);
+          const clock = cleanText(status.displayClock, "");
+          gameStatus = `${period > 4 ? "OT" : `Q${period || "?"}`}${clock ? ` · ${clock}` : ""}`;
+        } else if (state === "post") {
+          gameStatus = cleanText(status.type?.shortDetail, "Final");
+        }
+
+        return {
+          id: String(event.id ?? ""),
+          name: cleanText(event.name, "NFL game"),
+          date: event.date ?? competition.date ?? "",
+          broadcast: broadcastNames.join(" / "),
+          state,
+          live: state === "in",
+          final: state === "post",
+          gameStatus,
+          week: Number(event.week?.number),
+          teams,
+          possessionTeamId: possessionTeam?.id ?? "",
+          situationYardLine,
+          yardsToFirstDown,
+          downDistance: cleanText(situation.downDistanceText, ""),
+          lastPlay: cleanText(situation.lastPlay?.text, "")
+        };
+      }
+
+      function chooseBroncosGame(events) {
+        let lastGame = null;
+        let nextGame = null;
+        for (const event of events ?? []) {
+          const game = normalizeEvent(event);
+          if (!game || !game.teams.some((team) => team.abbreviation === "DEN")) continue;
+          lastGame = game;
+          if (game.live) return game;
+          if (game.state === "pre" && !nextGame) nextGame = game;
+        }
+        return nextGame ?? lastGame;
+      }
+
+      function gameLabel(game) {
+        const status = game.live ? `LIVE · ${game.gameStatus}` : game.gameStatus;
+        const matchup = game.live
+          ? `${game.teams[0].abbreviation} ${game.teams[0].score} vs ${game.teams[1].abbreviation} ${game.teams[1].score}`
+          : `${game.teams[0].abbreviation} vs ${game.teams[1].abbreviation}`;
+        const network = game.broadcast ? ` · ${game.broadcast}` : "";
+        return `${matchup}${network} · ${status}`;
+      }
+
+      function renderGameChoices() {
+        let previousValue = app.selectedId;
+        const games = app.currentWeekGames
+          .filter((game) => game.live || game.state === "pre")
+          .sort((left, right) => Date.parse(left.date) - Date.parse(right.date));
+        const favoriteAbbreviation = favoriteTeamSelect.value;
+        const favoriteGame = games.find((game) => game.teams.some((team) =>
+          team.abbreviation === favoriteAbbreviation));
+        if (previousValue === "DEN") {
+          previousValue = games.find((game) => game.teams.some((team) =>
+            team.abbreviation === "DEN"))?.id ?? favoriteGame?.id ?? games[0]?.id ?? "";
+        }
+        const selectedGameExists = games.some((game) => game.id === previousValue);
+        const selectedId = selectedGameExists
+          ? previousValue
+          : favoriteGame?.id ?? games[0]?.id ?? "";
+
+        gameSelect.replaceChildren();
+
+        if (games.length === 0) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "No upcoming games this NFL week";
+          option.disabled = true;
+          gameSelect.append(option);
+        } else {
+          const appendGame = (parent, game) => {
+            const option = document.createElement("option");
+            option.value = game.id;
+            option.textContent = gameLabel(game);
+            parent.append(option);
+          };
+
+          if (favoriteGame) {
+            const favoriteGroup = document.createElement("optgroup");
+            favoriteGroup.label = `${favoriteAbbreviation} game this week`;
+            appendGame(favoriteGroup, favoriteGame);
+            gameSelect.append(favoriteGroup);
+          }
+
+          const remainingGames = games.filter((game) => game.id !== favoriteGame?.id);
+          if (remainingGames.length) {
+            const otherGamesGroup = document.createElement("optgroup");
+            otherGamesGroup.label = "Other games this NFL week";
+            for (const game of remainingGames) appendGame(otherGamesGroup, game);
+            gameSelect.append(otherGamesGroup);
+          }
+        }
+
+        app.selectedId = selectedId;
+        gameSelect.value = app.selectedId;
+      }
+
+      function updateGameCard(game) {
+        if (!game) {
+          updateKickoffCountdown(null);
+          el("broadcast-network").textContent = "";
+          el("broadcast-network").classList.add("hidden");
+          el("live-badge").classList.add("hidden");
+          el("left-name").textContent = "DENVER BRONCOS";
+          el("left-code").textContent = "DEN";
+          el("left-record").textContent = "—";
+          el("left-score").textContent = "--";
+          updateTimeoutIndicators(el("left-timeouts"), null);
+          el("right-name").textContent = "OPPONENT";
+          el("right-code").textContent = "---";
+          el("right-record").textContent = "—";
+          el("right-score").textContent = "--";
+          updateTimeoutIndicators(el("right-timeouts"), null);
+          updatePossessionMarkers(null);
+          el("game-state").textContent = "No Broncos game is available from ESPN.";
+          el("game-state").classList.add("hidden");
+          el("down-chip").textContent = "—";
+          el("last-play").textContent = "Waiting for game data…";
+          el("last-play").classList.remove("informational");
+          renderDriveChart(null, null);
+          renderExtraCommentary([]);
+          return;
+        }
+
+        const [left, right] = game.teams;
+        el("live-badge").classList.toggle("hidden", !game.live);
+        el("left-name").textContent = left.name.toUpperCase();
+        el("left-code").textContent = left.abbreviation;
+        el("left-record").textContent = left.record || "—";
+        el("left-score").textContent = left.score;
+        updateTimeoutIndicators(el("left-timeouts"), left.timeouts);
+        el("right-name").textContent = right.name.toUpperCase();
+        el("right-code").textContent = right.abbreviation;
+        el("right-record").textContent = right.record || "—";
+        el("right-score").textContent = right.score;
+        updateTimeoutIndicators(el("right-timeouts"), right.timeouts);
+        updatePossessionMarkers(game);
+        el("game-state").textContent = game.gameStatus;
+        el("game-state").classList.toggle("hidden", !game.live);
+        el("broadcast-network").textContent = game.broadcast;
+        el("broadcast-network").classList.toggle("hidden", !game.broadcast);
+        updateKickoffCountdown(game);
+        el("down-chip").textContent = game.downDistance || "—";
+        el("last-play").textContent = game.lastPlay || (game.live ? "Waiting for ESPN play-by-play…" : "No live play available.");
+        el("last-play").classList.toggle("informational", isInformationalPlay("", game.lastPlay ?? ""));
+        renderDriveChart(game.drive ?? null, game);
+        renderExtraCommentary(game.commentary ?? []);
+      }
+
+      function updateKickoffCountdown(game) {
+        const countdown = el("kickoff-countdown");
+        const kickoffTime = game?.state === "pre" ? Date.parse(game.date) : NaN;
+        if (!Number.isFinite(kickoffTime)) {
+          countdown.textContent = "";
+          countdown.classList.add("hidden");
+          return;
+        }
+
+        const remainingSeconds = Math.max(0, Math.ceil((kickoffTime - Date.now()) / 1000));
+        if (remainingSeconds === 0) {
+          countdown.textContent = "Kickoff momentarily";
+        } else {
+          const days = Math.floor(remainingSeconds / 86400);
+          const hours = Math.floor((remainingSeconds % 86400) / 3600);
+          const minutes = Math.floor((remainingSeconds % 3600) / 60);
+          const seconds = remainingSeconds % 60;
+          const clock = [hours, minutes, seconds]
+            .map((part) => String(part).padStart(2, "0"))
+            .join(":");
+          countdown.textContent = `Kickoff in ${days > 0 ? `${days}d ` : ""}${clock}`;
+        }
+        countdown.classList.remove("hidden");
+      }
+
+      function isInformationalPlay(type, text) {
+        const normalizedType = cleanText(type, "").toLowerCase().replace(/[-_]/g, " ").trim();
+        const normalizedText = cleanText(text, "").toLowerCase();
+        return /^(?:(?:official|media|injury|tv|television|commercial) )?timeout(?:\s+#?\d+)?$/.test(normalizedType) ||
+          /^(?:two|2)[ -]minute warning$/.test(normalizedType) ||
+          /^(?:end(?: of)? (?:period|quarter|half|game)|quarter end|half end|commercial break|replay review)$/.test(normalizedType) ||
+          /^(?:(?:official|media|injury|tv|television|commercial) )?timeout\b/.test(normalizedText) ||
+          /^(?:two|2)[ -]minute warning\b/.test(normalizedText) ||
+          /^(?:end of (?:period|quarter|half|game)|commercial break)\b/.test(normalizedText) ||
+          (/\bno play\b/.test(normalizedText) && !/\bpenalt(?:y|ies)\b/.test(normalizedText));
+      }
+
+      function renderExtraCommentary(items) {
+        const panel = el("commentary-panel");
+        const list = el("commentary-list");
+        list.replaceChildren();
+        if (el("extra-commentary").value !== "on") {
+          panel.classList.add("hidden");
+          return;
+        }
+
+        panel.classList.remove("hidden");
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "commentary-empty";
+          empty.textContent = "No additional ESPN news or analysis is available right now.";
+          list.append(empty);
+          return;
+        }
+
+        for (const item of items) {
+          const article = document.createElement("article");
+          article.className = "commentary-item";
+          const headline = document.createElement("p");
+          headline.className = "commentary-headline";
+          const safeUrl = getEspnArticleUrl(item.url);
+          if (safeUrl) {
+            const link = document.createElement("a");
+            link.href = safeUrl;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = item.headline;
+            headline.append(link);
+          } else {
+            headline.textContent = item.headline;
+          }
+          article.append(headline);
+          if (item.description) {
+            const description = document.createElement("p");
+            description.className = "commentary-description";
+            description.textContent = item.description;
+            article.append(description);
+          }
+          list.append(article);
+        }
+      }
+
+      function getEspnArticleUrl(value) {
+        if (!value) return "";
+        try {
+          const url = new URL(value);
+          if (!["http:", "https:"].includes(url.protocol) ||
+              !(url.hostname === "espn.com" || url.hostname.endsWith(".espn.com"))) {
+            return "";
+          }
+          url.protocol = "https:";
+          return url.href;
+        } catch {
+          return "";
+        }
+      }
+
+      function updatePossessionMarkers(game) {
+        const markers = [
+          { element: el("left-possession-marker"), team: game?.teams[0] },
+          { element: el("right-possession-marker"), team: game?.teams[1] }
+        ];
+        for (const { element, team } of markers) {
+          const active = Boolean(team?.id && game?.possessionTeamId === team.id);
+          element.classList.toggle("active", active);
+          element.setAttribute(
+            "aria-label",
+            active ? `${team.name} has possession` : "No possession indicator"
+          );
+        }
+
+      }
+
+      function updateTimeoutIndicators(container, remaining) {
+        const available = Number.isInteger(remaining) && remaining >= 0
+          ? Math.min(3, remaining)
+          : null;
+        container.classList.toggle("unavailable", available === null);
+        container.setAttribute(
+          "aria-label",
+          available === null
+            ? "Timeouts unavailable"
+            : `${available} timeout${available === 1 ? "" : "s"} remaining`
+        );
+        container.title = available === null
+          ? "Timeouts unavailable"
+          : `${available} timeout${available === 1 ? "" : "s"} remaining`;
+        [...container.children].forEach((indicator, index) => {
+          indicator.classList.toggle("available", available !== null && index < available);
+        });
+      }
+
+      async function getCurrentDrive(eventId, fallback) {
+        const summary = await fetchJson(`${SUMMARY_URL}${encodeURIComponent(eventId)}`);
+        const commentary = (summary?.news?.articles ?? [])
+          .filter((article) => typeof article?.headline === "string" && article.headline.trim())
+          .slice(0, 6)
+          .map((article) => ({
+            headline: cleanText(article.headline, ""),
+            description: cleanText(article.description, ""),
+            url: cleanText(article.links?.web?.href, "")
+          }));
+        const currentDrive = summary?.drives?.current;
+        if (!currentDrive) return { drive: null, lastPlay: fallback, commentary };
+
+        const fieldCoordinate = (spot) => {
+          const yardLine = Number(spot?.yardLine);
+          return spot?.yardLine !== null && spot?.yardLine !== undefined &&
+            Number.isFinite(yardLine)
+            ? Math.max(0, Math.min(100, yardLine))
+            : null;
+        };
+        const plays = Array.isArray(currentDrive.plays)
+          ? currentDrive.plays.map((play, index) => {
+            const type = cleanText(
+              typeof play.type === "string" ? play.type : play.type?.text,
+              ""
+            );
+            const pointAfterAttempt = play.pointAfterAttempt &&
+              typeof play.pointAfterAttempt === "object"
+              ? {
+                text: cleanText(play.pointAfterAttempt.text, ""),
+                value: play.pointAfterAttempt.value !== null &&
+                  play.pointAfterAttempt.value !== undefined &&
+                  play.pointAfterAttempt.value !== "" &&
+                  Number.isFinite(Number(play.pointAfterAttempt.value))
+                  ? Number(play.pointAfterAttempt.value)
+                  : null
+              }
+              : null;
+            return {
+              id: cleanText(String(play.id ?? ""), `${currentDrive.id}-${index + 1}`),
+              text: cleanText(play.text, "Play text unavailable"),
+              type,
+              informational: isInformationalPlay(type, play.text),
+              yardage: getPlayYardage(play),
+              scoringPlay: typeof play.scoringPlay === "boolean" ? play.scoringPlay : null,
+              scoreValue: play.scoreValue !== null && play.scoreValue !== undefined &&
+                Number.isFinite(Number(play.scoreValue))
+                ? Number(play.scoreValue)
+                : null,
+              scoringType: cleanText(
+                typeof play.scoringType === "string"
+                  ? play.scoringType
+                  : play.scoringType?.name ?? play.scoringType?.displayName,
+                ""
+              ),
+              pointAfterAttempt,
+              isTurnover: Boolean(play.isTurnover),
+              startYardLine: fieldCoordinate(play.start),
+              endYardLine: fieldCoordinate(play.end),
+              startTeamId: cleanText(String(play.start?.team?.id ?? "")),
+              endTeamId: cleanText(String(play.end?.team?.id ?? "")),
+              participants: Array.isArray(play.participants)
+                ? (() => {
+                  const playersByKey = new Map();
+                  for (const participant of play.participants) {
+                    const athlete = participant?.athlete ?? {};
+                    const headshotUrl = cleanText(athlete.headshot?.href, "");
+                    const id = cleanText(String(athlete.id ?? ""), "");
+                    const name = cleanText(athlete.displayName, athlete.fullName ?? athlete.shortName ?? "");
+                    if (!name) continue;
+                    const role = cleanText(String(participant?.type ?? ""), "Player");
+                    const key = id || `${athlete.team?.abbreviation ?? ""}:${name}`;
+                    const existing = playersByKey.get(key);
+                    if (existing) {
+                      if (!existing.roles.includes(role)) existing.roles.push(role);
+                      continue;
+                    }
+                    playersByKey.set(key, {
+                      id,
+                      name,
+                      position: cleanText(
+                        athlete.position?.abbreviation,
+                        athlete.position?.displayName ?? athlete.position?.name ?? ""
+                      ),
+                      team: cleanText(athlete.team?.abbreviation, ""),
+                      roles: [role],
+                      headshotUrl: /^https:\/\/a\.espncdn\.com\//i.test(headshotUrl)
+                        ? headshotUrl
+                        : ""
+                    });
+                  }
+                  return [...playersByKey.values()];
+                })()
+                : []
+            };
+          })
+          : [];
+        let lastPlay = fallback;
+        for (let i = plays.length - 1; i >= 0; i -= 1) {
+          if (plays[i].text !== "Play text unavailable") {
+            lastPlay = plays[i].text;
+            break;
+          }
+        }
+        return {
+          drive: {
+            id: cleanText(String(currentDrive.id ?? "")),
+            teamId: cleanText(String(currentDrive.team?.id ?? "")),
+            teamName: cleanText(currentDrive.team?.displayName, "Current offense"),
+            teamAbbreviation: cleanText(currentDrive.team?.abbreviation, ""),
+            plays
+          },
+          lastPlay,
+          commentary
+        };
+      }
+
+      function clearPlayerSpotlight() {
+        const spotlight = el("player-spotlight");
+        spotlight.classList.add("hidden");
+        el("player-card-list").replaceChildren();
+      }
+
+      function resetPlayerSpotlight(eventId = "") {
+        if (app.playerSpotlight.timerId) {
+          window.clearTimeout(app.playerSpotlight.timerId);
+        }
+        app.playerSpotlight = {
+          eventId,
+          seenPlayIds: new Set(),
+          pending: [],
+          activePlay: null,
+          timerId: 0
+        };
+        clearPlayerSpotlight();
+      }
+
+      function renderPlayerSpotlight(play) {
+        const spotlight = el("player-spotlight");
+        const cardList = el("player-card-list");
+        cardList.replaceChildren();
+
+        const roleNames = {
+          assistedBy: "Assist",
+          penalized: "Penalty",
+          passer: "Passer",
+          receiver: "Receiver",
+          rusher: "Rusher",
+          tackler: "Tackler"
+        };
+        for (const player of play.participants) {
+          const card = document.createElement("article");
+          card.className = "player-card";
+          if (player.headshotUrl) {
+            const image = document.createElement("img");
+            image.src = player.headshotUrl;
+            image.alt = player.name;
+            image.loading = "lazy";
+            image.addEventListener("error", () => {
+              image.replaceWith(makePlayerAvatar(player.name));
+            }, { once: true });
+            card.append(image);
+          } else {
+            card.append(makePlayerAvatar(player.name));
+          }
+
+          const info = document.createElement("div");
+          info.className = "player-card-info";
+          const name = document.createElement("p");
+          name.className = "player-card-name";
+          name.textContent = player.name;
+          const metadata = document.createElement("p");
+          metadata.className = "player-card-meta";
+          metadata.textContent = [
+            player.team,
+            player.position,
+            player.roles.map((role) => roleNames[role] ?? role).join(" / ")
+          ].filter(Boolean).join(" · ");
+          info.append(name, metadata);
+          card.append(info);
+          cardList.append(card);
+        }
+        spotlight.classList.remove("hidden");
+      }
+
+      function makePlayerAvatar(name) {
+        const avatar = document.createElement("div");
+        avatar.className = "player-avatar-fallback";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = name.split(/\s+/).slice(0, 2)
+          .map((part) => part[0] ?? "").join("").toUpperCase();
+        return avatar;
+      }
+
+      function showNextPlayerSpotlight() {
+        const state = app.playerSpotlight;
+        if (state.timerId) return;
+        if (!state.activePlay) {
+          state.activePlay = state.pending.shift() ?? null;
+          if (state.activePlay) renderPlayerSpotlight(state.activePlay);
+        }
+        if (!state.activePlay ||
+            el("player-details-mode").value === "until-next-play") return;
+        state.timerId = window.setTimeout(() => {
+          state.timerId = 0;
+          state.activePlay = null;
+          clearPlayerSpotlight();
+          showNextPlayerSpotlight();
+        }, Number(el("player-details-duration").value) * 1000);
+      }
+
+      function updatePlayerSpotlight(eventId, drive) {
+        if (!eventId) {
+          resetPlayerSpotlight();
+          return;
+        }
+        if (app.playerSpotlight.eventId !== eventId) {
+          resetPlayerSpotlight(eventId);
+          for (const play of drive?.plays ?? []) {
+            app.playerSpotlight.seenPlayIds.add(play.id);
+          }
+          return;
+        }
+
+        const state = app.playerSpotlight;
+        const newPlays = (drive?.plays ?? []).filter((play) =>
+          !state.seenPlayIds.has(play.id)
+        );
+        for (const play of newPlays) {
+          state.seenPlayIds.add(play.id);
+        }
+        const actualPlays = newPlays.filter((play) => !play.informational);
+        if (!actualPlays.length) return;
+
+        if (el("player-details-mode").value === "until-next-play") {
+          if (state.timerId) window.clearTimeout(state.timerId);
+          state.timerId = 0;
+          state.pending = [];
+          state.activePlay = null;
+          clearPlayerSpotlight();
+          const latestPlay = actualPlays[actualPlays.length - 1];
+          if (latestPlay.participants.length) {
+            state.activePlay = latestPlay;
+            renderPlayerSpotlight(latestPlay);
+          }
+          return;
+        }
+
+        for (const play of actualPlays) {
+          if (play.participants.length) state.pending.push(play);
+        }
+        showNextPlayerSpotlight();
+      }
+
+      function renderDriveChart(drive, game) {
+        const chart = el("drive-chart");
+        const playsToShow = Number(el("history-play-count").value) || DEFAULT_HISTORY_PLAY_COUNT;
+        const sourcePlays = drive?.plays.filter((play) => !play.informational)
+          .slice(-playsToShow) ?? [];
+        const plays = sourcePlays.flatMap((play, index) => {
+          const rows = [play];
+          const attempt = play.pointAfterAttempt;
+          const nextPlay = sourcePlays[index + 1];
+          const nextPlayIsConversion = nextPlay &&
+            /\b(?:extra point|two[ -]point conversion)\b/i.test(
+              `${nextPlay.type} ${nextPlay.text}`
+            ) &&
+            (!play.startTeamId || !nextPlay.startTeamId ||
+              play.startTeamId === nextPlay.startTeamId);
+          if (attempt && !nextPlayIsConversion &&
+              (play.scoringType ?? "").toLowerCase() === "touchdown") {
+            const attemptText = attempt.text ||
+              (attempt.value === 2 ? "Two-Point Conversion Attempt" : "Extra Point Attempt");
+            const normalizedAttemptText = attemptText.toLowerCase();
+            const attemptIsGood = /\b(?:good|successful|made)\b/.test(normalizedAttemptText);
+            const inferredAttemptValue = /two[ -]point/.test(normalizedAttemptText) ? 2
+              : /extra point/.test(normalizedAttemptText) ? 1 : 0;
+            const inferredValue = attemptIsGood ? inferredAttemptValue : 0;
+            const points = attempt.value ?? inferredValue;
+            rows.push({
+              ...play,
+              id: `${play.id}-point-after`,
+              type: attemptText,
+              text: attemptText,
+              informational: false,
+              yardage: 0,
+              scoringPlay: points > 0,
+              scoreValue: points,
+              scoringType: /two[ -]point/.test(normalizedAttemptText)
+                ? "two-point conversion" : "extra point",
+              pointAfterAttempt: null,
+              isTurnover: false,
+              startYardLine: play.endYardLine ?? play.startYardLine,
+              endYardLine: play.endYardLine ?? play.startYardLine
+            });
+          }
+          return rows;
+        });
+        chart.replaceChildren();
+
+        if (!drive || plays.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "drive-empty";
+          empty.textContent = "Recent game plays appear here.";
+          chart.append(empty);
+          return;
+        }
+
+        const offense = game?.teams.find((team) =>
+          team.id === game.possessionTeamId) ??
+          game?.teams.find((team) => team.id === drive.teamId);
+        const homeTeam = game?.teams.find((team) => team.homeAway === "home") ??
+          game?.teams[0] ?? offense;
+        const awayTeam = game?.teams.find((team) => team.homeAway === "away") ??
+          game?.teams.find((team) => team.id !== homeTeam?.id);
+
+        const svgNamespace = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(svgNamespace, "svg");
+        const width = Math.max(chart.clientWidth, 320);
+        const endzoneWidth = Math.min(90, Math.max(42, width * .08));
+        const fieldLeft = endzoneWidth + 24;
+        const fieldRight = width - endzoneWidth - 24;
+        const fieldWidth = fieldRight - fieldLeft;
+        const fieldTop = 42;
+        const rowTop = fieldTop + 29;
+        const rowHeight = 28;
+        const fieldBottom = rowTop + plays.length * rowHeight + 4;
+        const possessionTeam = game?.teams.find((team) =>
+          team.id === game.possessionTeamId);
+        const yardsToFirstDown = game?.yardsToFirstDown;
+        const lineToGainProgress = game?.live && possessionTeam &&
+          game.situationYardLine !== null &&
+          Number.isFinite(game.situationYardLine) &&
+          yardsToFirstDown !== null &&
+          Number.isFinite(yardsToFirstDown)
+          ? Math.max(0, Math.min(100, game.situationYardLine +
+            yardsToFirstDown * (possessionTeam.homeAway === "home" ? 1 : -1)))
+          : null;
+        const height = fieldBottom + (lineToGainProgress === null ? 18 : 28);
+        const svgText = (tag, text, x, y, className) => {
+          const node = document.createElementNS(svgNamespace, tag);
+          node.textContent = text;
+          node.setAttribute("x", String(x));
+          node.setAttribute("y", String(y));
+          if (className) node.setAttribute("class", className);
+          return node;
+        };
+        const appendRect = (x, y, rectWidth, rectHeight, className) => {
+          const rect = document.createElementNS(svgNamespace, "rect");
+          rect.setAttribute("x", String(x));
+          rect.setAttribute("y", String(y));
+          rect.setAttribute("width", String(rectWidth));
+          rect.setAttribute("height", String(rectHeight));
+          rect.setAttribute("class", className);
+          svg.append(rect);
+        };
+        const appendSpecialPlayMarker = (play, x, y, team) => {
+          const type = play.type.toLowerCase();
+          const text = play.text.toLowerCase();
+          const isFieldGoal = type.includes("field goal") || /\bfield goal\b/.test(text);
+          const isPunt = type.includes("punt") || /\bpunt(?:s|ed|ing)?\b/.test(text);
+          const isKickoff = type.includes("kickoff") || /\bkick(?:s|ed|ing)? off\b/.test(text);
+          if (!isFieldGoal && !isPunt && !isKickoff) return null;
+
+          const colors = getTeamColors(team);
+          const group = document.createElementNS(svgNamespace, "g");
+          group.setAttribute("class", "field-special-marker");
+          group.setAttribute("transform", `translate(${x} ${y})`);
+          const title = document.createElementNS(svgNamespace, "title");
+          group.append(title);
+          const addShape = (tag, attributes) => {
+            const shape = document.createElementNS(svgNamespace, tag);
+            for (const [name, value] of Object.entries(attributes)) {
+              shape.setAttribute(name, String(value));
+            }
+            group.append(shape);
+            return shape;
+          };
+
+          if (isFieldGoal) {
+            const unsuccessful = /\b(?:missed|no good|blocked|failed)\b/.test(type) ||
+              /\bfield goal\b.{0,30}\b(?:no good|missed|blocked|failed)\b/.test(text);
+            const successful = !unsuccessful && (
+              /\b(?:good|made|successful)\b/.test(type) ||
+              /\bfield goal\b.{0,30}\b(?:is\s+)?good\b|\bfield goal\b.{0,30}\bmade\b/.test(text)
+            );
+            const outcome = successful ? "successful"
+              : unsuccessful ? "unsuccessful" : "result unavailable";
+            const outcomeColor = successful ? "#61d7a2"
+              : unsuccessful ? "#ff7373" : "#f7f8fc";
+            title.textContent = `${team?.name ?? "Team"} field goal ${outcome}`;
+            addShape("rect", {
+              x: -12,
+              y: -9,
+              width: 28,
+              height: 18,
+              rx: 4,
+              fill: "#081522",
+              stroke: "#fff",
+              "stroke-width": 1
+            });
+            addShape("path", {
+              d: "M-5 4V-5M5 4V-5M-5 1H5",
+              fill: "none",
+              stroke: colors.primary,
+              "stroke-width": 2,
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round"
+            });
+            addShape("circle", {
+              cx: 0,
+              cy: 4,
+              r: 1.5,
+              fill: colors.primary,
+              stroke: "#080a0e",
+              "stroke-width": .6
+            });
+            if (successful || unsuccessful) {
+              const result = svgText("text", successful ? "✓" : "×", 8, -3,
+                "field-special-marker-text");
+              group.append(result);
+              result.style.fill = outcomeColor;
+              result.setAttribute("font-size", "10");
+              result.setAttribute("aria-label", outcome);
+            }
+            group.setAttribute("role", "img");
+            group.setAttribute("aria-label", title.textContent);
+          } else {
+            const kind = isPunt ? "punt" : "kickoff";
+            const label = isPunt ? "P" : "K";
+            title.textContent = `${team?.name ?? "Team"} ${kind}`;
+            addShape("circle", {
+              cx: 0,
+              cy: 0,
+              r: 6,
+              fill: colors.primary,
+              stroke: colors.secondary,
+              "stroke-width": 1
+            });
+            const textNode = svgText("text", label, 0, .5, "field-special-marker-text");
+            group.append(textNode);
+            textNode.style.fill = teamLabelColor(colors.primary);
+            group.setAttribute("role", "img");
+            group.setAttribute("aria-label", title.textContent);
+          }
+          svg.append(group);
+        };
+        const appendEventBadges = (badges, x, y) => {
+          if (!badges.length) return;
+          const gap = 3;
+          const widths = badges.map((badge) => badge.label.length > 2 ? 30 : 24);
+          const totalWidth = widths.reduce((sum, badgeWidth) => sum + badgeWidth, 0) +
+            gap * (badges.length - 1);
+          let badgeX = -totalWidth / 2;
+          const group = document.createElementNS(svgNamespace, "g");
+          group.setAttribute("class", "field-event-markers");
+          group.setAttribute("transform", `translate(${x} ${y})`);
+          for (let index = 0; index < badges.length; index += 1) {
+            const badge = badges[index];
+            const badgeWidth = widths[index];
+            const rect = document.createElementNS(svgNamespace, "rect");
+            rect.setAttribute("x", String(badgeX));
+            rect.setAttribute("y", "-9");
+            rect.setAttribute("width", String(badgeWidth));
+            rect.setAttribute("height", "18");
+            rect.setAttribute("rx", "4");
+            rect.setAttribute("class", "field-event-badge");
+            rect.style.stroke = badge.color;
+            group.append(rect);
+            const label = svgText("text", badge.label, badgeX + badgeWidth / 2, 0,
+              "field-event-badge-text");
+            group.append(label);
+            const title = document.createElementNS(svgNamespace, "title");
+            title.textContent = badge.description;
+            group.append(title);
+            badgeX += badgeWidth + gap;
+          }
+          svg.append(group);
+        };
+        const getScorePoints = (play) => {
+          if (play.scoringPlay === false ||
+              /\bno play\b|\bnullified\b/i.test(play.text)) return null;
+          if (play.scoreValue > 0) return play.scoreValue;
+
+          const scoringType = `${play.scoringType} ${play.type}`.toLowerCase();
+          const text = play.text.toLowerCase();
+          if (/safety/.test(scoringType) || /\bsafety\b/.test(text)) return 2;
+          if (/touchdown|\btd\b/.test(scoringType) || /\btouchdown\b/.test(text)) return 6;
+          if (/two[ -]point conversion/.test(scoringType) ||
+              /two[ -]point conversion.{0,30}\b(?:good|successful)\b/.test(text)) return 2;
+          if (/extra point/.test(scoringType) ||
+              /extra point.{0,30}\b(?:good|is good)\b/.test(text)) return 1;
+          if (/field goal/.test(scoringType) || /\bfield goal\b/.test(text)) {
+            return /\b(?:good|made|successful)\b/.test(`${scoringType} ${text}`) &&
+              !/\b(?:no good|missed|blocked|failed)\b/.test(`${scoringType} ${text}`)
+              ? 3
+              : null;
+          }
+          return null;
+        };
+        const getScoringTeam = (play, playTeam, points) => {
+          const otherTeam = game?.teams.find((team) => team.id !== playTeam?.id);
+          const scoringType = (play.scoringType ?? "").toLowerCase();
+          if (scoringType.includes("safety")) return otherTeam ?? playTeam;
+          const isReturnScore = points === 6 && (
+            play.isTurnover || /\b(?:kickoff|punt)\b/i.test(play.type)
+          );
+          if (isReturnScore) {
+            return game?.teams.find((team) => team.id === play.endTeamId &&
+              team.id !== playTeam?.id) ?? otherTeam ?? playTeam;
+          }
+          return game?.teams.find((team) => team.id === play.endTeamId) ?? playTeam;
+        };
+        const positionX = (progress) =>
+          fieldLeft + (progress / 100) * fieldWidth;
+
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.setAttribute("width", String(width));
+        svg.setAttribute("height", String(height));
+        svg.setAttribute("role", "img");
+        svg.setAttribute(
+          "aria-label",
+          `Last ${plays.length} plays, with home team ${homeTeam?.name ?? "unknown"} at left and away team ${awayTeam?.name ?? "unknown"} at right`
+        );
+
+        const homeEndzone = document.createElementNS(svgNamespace, "rect");
+        homeEndzone.setAttribute("x", String(fieldLeft - endzoneWidth));
+        homeEndzone.setAttribute("y", String(fieldTop));
+        homeEndzone.setAttribute("width", String(endzoneWidth));
+        homeEndzone.setAttribute("height", String(fieldBottom - fieldTop));
+        homeEndzone.setAttribute("class", "field-endzone-own");
+        const homeColors = getTeamColors(homeTeam);
+        homeEndzone.setAttribute("fill", homeColors.primary);
+        svg.append(homeEndzone);
+        appendRect(fieldLeft, fieldTop, fieldWidth, fieldBottom - fieldTop, "field-turf");
+        const awayEndzone = document.createElementNS(svgNamespace, "rect");
+        awayEndzone.setAttribute("x", String(fieldRight));
+        awayEndzone.setAttribute("y", String(fieldTop));
+        awayEndzone.setAttribute("width", String(endzoneWidth));
+        awayEndzone.setAttribute("height", String(fieldBottom - fieldTop));
+        awayEndzone.setAttribute("class", "field-endzone-opponent");
+        const awayColors = getTeamColors(awayTeam);
+        awayEndzone.setAttribute("fill", awayColors.primary);
+        svg.append(awayEndzone);
+
+        const endzoneCenterY = (fieldTop + fieldBottom) / 2;
+        const homeEndzoneLabel = svgText("text", homeTeam?.abbreviation ?? "HOME",
+          fieldLeft - endzoneWidth / 2, endzoneCenterY, "field-endzone-label");
+        homeEndzoneLabel.style.fill = teamLabelColor(homeColors.primary);
+        homeEndzoneLabel.setAttribute("transform",
+          `rotate(-90 ${fieldLeft - endzoneWidth / 2} ${endzoneCenterY})`);
+        homeEndzoneLabel.setAttribute("aria-label", `${homeTeam?.name ?? "Home team"} end zone`);
+        svg.append(homeEndzoneLabel);
+        const awayEndzoneLabel = svgText("text", awayTeam?.abbreviation ?? "AWAY",
+          fieldRight + endzoneWidth / 2, endzoneCenterY, "field-endzone-label");
+        awayEndzoneLabel.style.fill = teamLabelColor(awayColors.primary);
+        awayEndzoneLabel.setAttribute("transform",
+          `rotate(-90 ${fieldRight + endzoneWidth / 2} ${endzoneCenterY})`);
+        awayEndzoneLabel.setAttribute("aria-label",
+          `${awayTeam?.name ?? "Away team"} end zone`);
+        svg.append(awayEndzoneLabel);
+
+        for (let index = 0; index < plays.length; index += 1) {
+          if (index % 2 === 1) {
+            appendRect(fieldLeft, rowTop + index * rowHeight, fieldWidth, rowHeight,
+              "field-row-shade");
+          }
+        }
+
+        for (let yard = 0; yard <= 100; yard += 10) {
+          const x = fieldLeft + (yard / 100) * fieldWidth;
+          const line = document.createElementNS(svgNamespace, "line");
+          line.setAttribute("x1", String(x));
+          line.setAttribute("x2", String(x));
+          line.setAttribute("y1", String(fieldTop));
+          line.setAttribute("y2", String(fieldBottom));
+          line.setAttribute("class", yard === 50
+            ? "field-yard-line midfield" : "field-yard-line");
+          svg.append(line);
+          if (yard > 0 && yard < 100) {
+            const label = yard <= 50 ? yard : 100 - yard;
+            svg.append(svgText("text", String(label), x, fieldTop - 8, "field-yard-label"));
+          }
+        }
+
+        for (let yard = 5; yard < 100; yard += 10) {
+          const x = fieldLeft + (yard / 100) * fieldWidth;
+          for (const [startY, endY] of [
+            [fieldTop, fieldTop + 4],
+            [fieldBottom - 4, fieldBottom]
+          ]) {
+            const tick = document.createElementNS(svgNamespace, "line");
+            tick.setAttribute("x1", String(x));
+            tick.setAttribute("x2", String(x));
+            tick.setAttribute("y1", String(startY));
+            tick.setAttribute("y2", String(endY));
+            tick.setAttribute("class", "field-five-yard-tick");
+            svg.append(tick);
+          }
+        }
+
+        if (lineToGainProgress !== null) {
+          const markerX = positionX(lineToGainProgress);
+          const marker = document.createElementNS(svgNamespace, "g");
+          marker.setAttribute("class", "field-first-down-marker");
+          marker.setAttribute("role", "img");
+          marker.setAttribute("aria-label", "First down line to gain");
+          for (const [startY, endY] of [
+            [fieldTop - 5, fieldTop + 6],
+            [fieldBottom - 6, fieldBottom + 5]
+          ]) {
+            const tick = document.createElementNS(svgNamespace, "line");
+            tick.setAttribute("x1", String(markerX));
+            tick.setAttribute("x2", String(markerX));
+            tick.setAttribute("y1", String(startY));
+            tick.setAttribute("y2", String(endY));
+            tick.setAttribute("class", "field-first-down-marker");
+            marker.append(tick);
+          }
+          const label = svgText("text", "1ST", markerX, fieldBottom + 17,
+            "field-first-down-label");
+          marker.append(label);
+          const markerTitle = document.createElementNS(svgNamespace, "title");
+          markerTitle.textContent = "First down line to gain";
+          marker.append(markerTitle);
+          svg.append(marker);
+        }
+
+        const progressByPlay = new Map();
+        let lastProgress = null;
+        let lastProgressTeamId = "";
+        for (const play of plays) {
+          const playTeam = game?.teams.find((team) =>
+            team.id === (play.startTeamId || play.teamId)) ?? offense;
+          const progressTeamId = play.startTeamId || play.endTeamId || play.teamId;
+          const startProgress = play.startYardLine !== null
+            ? play.startYardLine
+            : lastProgressTeamId === progressTeamId ? lastProgress : null;
+          const isSpecialTeamsPlay = /\b(?:kickoff|punt|field goal)\b/i.test(play.type);
+          const isPenaltyPlay = /\bpenalt(?:y|ies|ized)\b/i.test(`${play.type} ${play.text}`);
+          const penaltyYardage = isPenaltyPlay
+            ? getPenaltyYardage(play.text, playTeam?.id, game?.teams ?? [])
+            : null;
+          let endProgress = play.endYardLine !== null
+            ? play.endYardLine
+            : null;
+          if (penaltyYardage !== null && startProgress !== null) {
+            const direction = playTeam?.homeAway === "home" ? 1 : -1;
+            endProgress = Math.max(0, Math.min(100, startProgress + penaltyYardage * direction));
+          } else if (endProgress === null && startProgress !== null && play.yardage !== null &&
+              !isSpecialTeamsPlay) {
+            const direction = playTeam?.homeAway === "home" ? 1 : -1;
+            endProgress = Math.max(0, Math.min(100, startProgress + play.yardage * direction));
+          }
+          progressByPlay.set(play, { startProgress, endProgress });
+          lastProgress = endProgress;
+          lastProgressTeamId = progressTeamId;
+        }
+
+        const displayPlays = [...plays].reverse();
+        for (let index = 0; index < displayPlays.length; index += 1) {
+          const play = displayPlays[index];
+          const centerY = rowTop + index * rowHeight + rowHeight / 2;
+          svg.append(svgText("text", String(index + 1), 17, centerY + 4, "field-row-number"));
+
+          const playTeam = game?.teams.find((team) =>
+            team.id === (play.startTeamId || play.teamId)) ?? offense;
+          const { startProgress, endProgress } = progressByPlay.get(play);
+          const isSpecialTeamsPlay = /\b(?:kickoff|punt|field goal)\b/i.test(play.type);
+          const isPenaltyPlay = /\bpenalt(?:y|ies|ized)\b/i.test(`${play.type} ${play.text}`);
+          const penaltyYardage = isPenaltyPlay
+            ? getPenaltyYardage(play.text, playTeam?.id, game?.teams ?? [])
+            : null;
+          const fieldMovementYardage = startProgress !== null && endProgress !== null
+            ? endProgress - startProgress
+            : null;
+          const movementYardage = penaltyYardage ?? play.yardage ??
+            (fieldMovementYardage === null
+              ? null
+              : fieldMovementYardage * (playTeam?.homeAway === "home" ? 1 : -1));
+          const kind = movementYardage === null ? "unknown"
+            : movementYardage > 0 ? "gain" : movementYardage < 0 ? "loss" : "zero";
+          const segmentKind = isPenaltyPlay ? "penalty"
+            : isSpecialTeamsPlay ? "special" : kind;
+          const specialTeamsTeam = isSpecialTeamsPlay
+            ? game?.teams.find((team) =>
+              team.id === (play.startTeamId || play.endTeamId)) ?? offense
+            : null;
+          const movementDescription = fieldMovementYardage === null
+            ? "field movement unavailable"
+            : `field movement ${fieldMovementYardage < 0 ? "left" : "right"} ${Math.abs(fieldMovementYardage)} yards`;
+          const description = isSpecialTeamsPlay
+            ? `${index + 1}. ${play.text} (${movementDescription})`
+            : `${index + 1}. ${play.text} (${movementYardage === null
+              ? "yardage unknown" : `${movementYardage > 0 ? "+" : ""}${movementYardage} yards`})`;
+          if (startProgress !== null && endProgress !== null) {
+            const segment = document.createElementNS(svgNamespace, "line");
+            segment.setAttribute("x1", String(positionX(startProgress)));
+            segment.setAttribute("x2", String(positionX(endProgress)));
+            segment.setAttribute("y1", String(centerY));
+            segment.setAttribute("y2", String(centerY));
+            segment.setAttribute("class", `field-play-${segmentKind}`);
+            if (specialTeamsTeam) {
+              segment.style.stroke = getTeamColors(specialTeamsTeam).primary;
+            }
+            segment.setAttribute("aria-label", description);
+            const segmentTitle = document.createElementNS(svgNamespace, "title");
+            segmentTitle.textContent = description;
+            segment.append(segmentTitle);
+            svg.append(segment);
+
+            const startMarker = document.createElementNS(svgNamespace, "circle");
+            startMarker.setAttribute("cx", String(positionX(startProgress)));
+            startMarker.setAttribute("cy", String(centerY));
+            startMarker.setAttribute("r", "2.5");
+            startMarker.setAttribute("class", "field-play-start");
+            svg.append(startMarker);
+          }
+
+          if (endProgress !== null) {
+            const markerTeam = game?.teams.find((team) =>
+              team.id === (play.startTeamId || play.endTeamId)) ?? offense;
+            appendSpecialPlayMarker(
+              play,
+              positionX(endProgress),
+              centerY,
+              markerTeam
+            );
+            const eventBadges = [];
+            if (play.isTurnover) {
+              const isInterception = /\bintercept(?:ed|ion)?\b/i.test(
+                `${play.type} ${play.text}`
+              );
+              eventBadges.push({
+                label: isInterception ? "INT" : "FUM",
+                color: "#ffb347",
+                description: isInterception ? "Interception turnover" : "Fumble turnover"
+              });
+            }
+            const scorePoints = getScorePoints(play);
+            if (scorePoints !== null) {
+              const scoringTeam = getScoringTeam(play, playTeam, scorePoints);
+              eventBadges.push({
+                label: `+${scorePoints}`,
+                color: "#fff",
+                description: `${scoringTeam?.name ?? "Team"} scores ${scorePoints} point${scorePoints === 1 ? "" : "s"}`
+              });
+            }
+            appendEventBadges(eventBadges, positionX(endProgress), centerY);
+          }
+
+          const hitArea = document.createElementNS(svgNamespace, "rect");
+          hitArea.setAttribute("x", String(fieldLeft));
+          hitArea.setAttribute("y", String(rowTop + index * rowHeight));
+          hitArea.setAttribute("width", String(fieldWidth));
+          hitArea.setAttribute("height", String(rowHeight));
+          hitArea.setAttribute("class", "field-play-hit");
+          hitArea.setAttribute("tabindex", "0");
+          hitArea.setAttribute("role", "button");
+          hitArea.setAttribute("aria-label", description);
+          hitArea.setAttribute("aria-pressed", "false");
+          const hitTitle = document.createElementNS(svgNamespace, "title");
+          hitTitle.textContent = description;
+          hitArea.append(hitTitle);
+          hitArea.addEventListener("click", () => {
+            const wasSelected = hitArea.classList.contains("is-selected");
+            svg.querySelectorAll(".field-play-hit.is-selected").forEach((selectedArea) => {
+              selectedArea.classList.remove("is-selected");
+              selectedArea.setAttribute("aria-pressed", "false");
+            });
+            const tooltip = chart.querySelector(".play-tooltip");
+            if (wasSelected) {
+              tooltip.classList.add("hidden");
+              tooltip.textContent = "";
+              return;
+            }
+            hitArea.classList.add("is-selected");
+            hitArea.setAttribute("aria-pressed", "true");
+            tooltip.textContent = description;
+            tooltip.classList.remove("hidden");
+          });
+          hitArea.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              hitArea.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            }
+          });
+          svg.append(hitArea);
+        }
+
+        chart.append(svg);
+        const tooltip = document.createElement("p");
+        tooltip.className = "play-tooltip hidden";
+        tooltip.setAttribute("role", "status");
+        chart.append(tooltip);
+      }
+
+      function classifyPlay(text) {
+        const play = text.toLowerCase();
+        if (/touchdown|scores? a touchdown/.test(play)) return "touchdown";
+        if (/intercept|fumble|turnover|recovered by/.test(play)) return "turnover";
+        if (/field goal.{0,40}(no good|missed|is no good|blocked)/.test(play)) return "field-goal-missed";
+        if (/field goal.{0,40}(good|is good)/.test(play)) return "field-goal";
+        if (/extra point.{0,30}(no good|missed|blocked)|two.point conversion.{0,30}(failed|no good|stopped)/.test(play)) return "conversion-failed";
+        if (/extra point.{0,30}(good|is good)|two.point conversion.{0,30}(good|successful)/.test(play)) return "conversion";
+        if (/first down|1st down/.test(play)) return "first-down";
+        return "";
+      }
+
+      function playImpactTeamId(game, previous, kind) {
+        if (kind === "turnover" || kind === "first-down" || kind === "field-goal-missed" ||
+            kind === "conversion-failed") {
+          return game.possessionTeamId;
+        }
+
+        const scoringTeam = game.teams.find((team) => {
+          const previousScore = Number(previous?.scores?.[team.id]);
+          const currentScore = Number(team.score);
+          return Number.isFinite(previousScore) && Number.isFinite(currentScore) &&
+            currentScore > previousScore;
+        });
+        if (scoringTeam) return scoringTeam.id;
+        return ["touchdown", "field-goal", "conversion"].includes(kind)
+          ? ""
+          : game.possessionTeamId;
+      }
+
+      function getRootingTeamPhrase(game, previous, eventKind, playDescription) {
+        if (rootingPhrasesMode.value !== "on" || !eventKind) return "";
+        const impactTeamId = playImpactTeamId(game, previous, eventKind);
+        const rootingTeam = game.teams.find((team) =>
+          team.id === getRootingTeamId(game));
+        if (!impactTeamId || !rootingTeam) return "";
+
+        const phraseList = impactTeamId === rootingTeam.id
+          ? positivePhrases.value
+          : negativePhrases.value;
+        const phrases = getConfiguredPhrases(phraseList);
+        if (!phrases.length) return "";
+
+        const template = phrases[Math.floor(Math.random() * phrases.length)];
+        return formatRootingPhrase(template, rootingTeam, playDescription);
+      }
+
+      function getConfiguredPhrases(value) {
+        return value.split(/\r?\n/)
+          .map((phrase) => phrase.trim())
+          .filter(Boolean);
+      }
+
+      function formatRootingPhrase(template, team, playDescription) {
+        const includesPlay = /\{play\}/i.test(template);
+        const teamName = TEAM_SPEECH_NAMES[team.abbreviation] ?? team.name;
+        const phrase = template
+          .replace(/\{team\}/gi, teamName)
+          .replace(/\{play\}/gi, playDescription);
+        return includesPlay ? phrase : `${phrase} ${playDescription}`;
+      }
+
+      function maybeAnnounce(game) {
+        if (!game?.live || !game.lastPlay) return;
+        const previous = app.lastPlayByEvent.get(game.id);
+        app.lastPlayByEvent.set(game.id, {
+          text: game.lastPlay,
+          scores: Object.fromEntries(game.teams.map((team) => [team.id, team.score]))
+        });
+        if (previous === undefined || previous.text === game.lastPlay) return;
+
+        const mode = audioMode.value;
+        const eventKind = classifyPlay(game.lastPlay) ||
+          (/^\s*1st\s*&/i.test(game.downDistance) ? "first-down" : "");
+        if (mode === "speech" || mode === "both") {
+          const playDescription = game.downDistance
+            ? `${game.lastPlay} ${game.downDistance}.`
+            : game.lastPlay;
+          const announcement = getRootingTeamPhrase(
+            game,
+            previous,
+            eventKind,
+            playDescription
+          ) || playDescription;
+          speak(announcement);
+        }
+        if ((mode === "effects" || mode === "both") && eventKind) playStinger(eventKind);
+      }
+
+      function getRootingTeamId(game) {
+        const abbreviation = rootingTeamSelect.value;
+        return game.teams.find((team) =>
+          team.abbreviation === abbreviation)?.id ?? "";
+      }
+
+      function teamRelativeLuminance(color) {
+        const hex = color.replace("#", "");
+        const channels = [0, 2, 4].map((index) => {
+          const value = Number.parseInt(hex.slice(index, index + 2), 16) / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      }
+
+      function teamContrastRatio(first, second) {
+        const luminances = [teamRelativeLuminance(first), teamRelativeLuminance(second)]
+          .sort((a, b) => b - a);
+        return (luminances[0] + 0.05) / (luminances[1] + 0.05);
+      }
+
+      function teamLabelColor(background) {
+        return teamContrastRatio(background, "#ffffff") >=
+          teamContrastRatio(background, "#000000")
+          ? "#ffffff"
+          : "#000000";
+      }
+
+      function getTeamColors(team, fallbackAbbreviation = "DEN") {
+        const [fallbackPrimary, fallbackSecondary] =
+          TEAM_COLORS[team?.abbreviation ?? fallbackAbbreviation] ?? TEAM_COLORS.DEN;
+        return {
+          primary: normalizeTeamColor(team?.primaryColor, fallbackPrimary),
+          secondary: normalizeTeamColor(team?.secondaryColor, fallbackSecondary)
+        };
+      }
+
+      function mixTeamColorWithWhite(color, amount) {
+        const channels = [0, 2, 4].map((index) =>
+          Number.parseInt(color.slice(index + 1, index + 3), 16));
+        return `#${channels.map((channel) =>
+          Math.round(channel + (255 - channel) * amount)
+            .toString(16)
+            .padStart(2, "0")
+        ).join("")}`;
+      }
+
+      function mixTeamColorWithBase(color, base, teamWeight) {
+        const teamChannels = [0, 2, 4].map((index) =>
+          Number.parseInt(color.slice(index + 1, index + 3), 16));
+        const baseChannels = [0, 2, 4].map((index) =>
+          Number.parseInt(base.slice(index + 1, index + 3), 16));
+        return `#${teamChannels.map((channel, index) =>
+          Math.round(channel * teamWeight + baseChannels[index] * (1 - teamWeight))
+            .toString(16)
+            .padStart(2, "0")
+        ).join("")}`;
+      }
+
+      function applyTeamTheme(team, fallbackAbbreviation = favoriteTeamSelect.value) {
+        const { primary, secondary } = getTeamColors(team, fallbackAbbreviation);
+        const darkSurface = "#080a0e";
+        let secondaryHighlight = secondary;
+        if (teamContrastRatio(secondaryHighlight, darkSurface) < 3) {
+          for (let amount = 0.1; amount <= 1; amount += 0.1) {
+            const lightened = mixTeamColorWithWhite(secondary, amount);
+            if (teamContrastRatio(lightened, darkSurface) >= 3) {
+              secondaryHighlight = lightened;
+              break;
+            }
+          }
+        }
+        const lightCandidates = [primary, secondary]
+          .sort((a, b) =>
+            teamContrastRatio(b, darkSurface) - teamContrastRatio(a, darkSurface));
+        let accent = lightCandidates[0];
+        if (teamContrastRatio(accent, darkSurface) < 4.5) {
+          for (let amount = 0.1; amount <= 1; amount += 0.1) {
+            const lightened = mixTeamColorWithWhite(accent, amount);
+            if (teamContrastRatio(lightened, darkSurface) >= 4.5) {
+              accent = lightened;
+              break;
+            }
+          }
+        }
+        const contrast = teamLabelColor(accent);
+        const root = document.documentElement;
+        root.style.setProperty("--team-page-primary",
+          mixTeamColorWithBase(primary, "#080a0e", 0.35));
+        root.style.setProperty("--team-page-secondary",
+          mixTeamColorWithBase(secondary, "#080a0e", 0.35));
+        root.style.setProperty("--team-card-primary",
+          mixTeamColorWithBase(primary, "#111318", 0.42));
+        root.style.setProperty("--team-card-secondary",
+          mixTeamColorWithBase(secondary, "#111318", 0.42));
+        root.style.setProperty("--team-control-surface",
+          mixTeamColorWithBase(primary, "#0d0f14", 0.22));
+        root.style.setProperty("--team-panel-surface",
+          mixTeamColorWithBase(secondary, "#0d0f14", 0.24));
+        root.style.setProperty("--team-inset-surface",
+          mixTeamColorWithBase(secondary, "#101216", 0.3));
+        root.style.setProperty("--team-primary", primary);
+        root.style.setProperty("--team-secondary", secondary);
+        root.style.setProperty("--team-secondary-highlight", secondaryHighlight);
+        root.style.setProperty("--team-accent", accent);
+        root.style.setProperty("--team-contrast", contrast);
+        el("theme-color").content = primary;
+      }
+
+      function rootingTeamPreferenceKey(game) {
+        return `rootingTeam:${game?.id ?? app.selectedId}`;
+      }
+
+      function updateMatchupTeamChoices(game) {
+        rootingTeamSelect.replaceChildren();
+        if (!game?.teams?.length) {
+          rootingTeamSelect.disabled = true;
+          applyTeamTheme(null);
+          return;
+        }
+
+        rootingTeamSelect.disabled = false;
+        for (const team of game.teams) {
+          const option = document.createElement("option");
+          option.value = team.abbreviation;
+          option.textContent = team.name;
+          rootingTeamSelect.append(option);
+        }
+
+        const favorite = game.teams.find((team) =>
+          team.abbreviation === favoriteTeamSelect.value);
+        const home = game.teams.find((team) => team.homeAway === "home");
+        const defaultTeam = favorite ?? home ?? game.teams[0];
+        const saved = readPreference(rootingTeamPreferenceKey(game), "");
+        const selectedTeam = game.teams.find((team) =>
+          team.abbreviation === saved) ?? defaultTeam;
+        rootingTeamSelect.value = selectedTeam.abbreviation;
+        applyTeamTheme(selectedTeam);
+      }
+
+      function populateFavoriteTeams() {
+        const savedFavorite = readPreference(
+          "favoriteTeam",
+          readPreference("rootingTeam", "DEN")
+        );
+        const favorite = NFL_TEAMS.some(([abbreviation]) =>
+          abbreviation === savedFavorite) ? savedFavorite : "DEN";
+        favoriteTeamSelect.replaceChildren();
+        for (const [abbreviation, name] of NFL_TEAMS) {
+          const option = document.createElement("option");
+          option.value = abbreviation;
+          option.textContent = name;
+          favoriteTeamSelect.append(option);
+        }
+        favoriteTeamSelect.value = favorite;
+        writePreference("favoriteTeam", favorite);
+        applyTeamTheme(null, favorite);
+      }
+
+      async function refresh() {
+        if (app.refreshInProgress) return;
+        app.refreshInProgress = true;
+        updateNetworkStatus();
+        if (!navigator.onLine) {
+          setSyncStatus("Offline", "error", "The laptop is offline. The last successful scoreboard remains visible.");
+          app.refreshInProgress = false;
+          return;
+        }
+
+        setSyncStatus("Syncing ESPN", "");
+        const [scoreboardResult, scheduleResult] = await Promise.allSettled([
+          fetchJson(SCOREBOARD_URL),
+          fetchJson(BRONCOS_URL)
+        ]);
+        const failures = [];
+
+        if (scoreboardResult.status === "fulfilled") {
+          const games = (scoreboardResult.value.events ?? [])
+            .map(normalizeEvent)
+            .filter(Boolean);
+          const currentWeek = Number(scoreboardResult.value.week?.number);
+          app.currentWeekGames = Number.isInteger(currentWeek)
+            ? games.filter((game) => game.week === currentWeek)
+            : games;
+          const scoreboardBroncos = games.find((game) =>
+            game.live && game.teams.some((team) => team.abbreviation === "DEN"));
+          if (scoreboardBroncos) app.broncosGame = scoreboardBroncos;
+        } else {
+          failures.push(`Live scoreboard: ${scoreboardResult.reason.message}`);
+        }
+
+        if (scheduleResult.status === "fulfilled") {
+          const scheduled = chooseBroncosGame(scheduleResult.value.events);
+          if (scheduled) {
+            const liveDenver = scoreboardResult.status === "fulfilled"
+              ? (scoreboardResult.value.events ?? [])
+                .map(normalizeEvent)
+                .find((game) => game?.live && game.teams.some((team) => team.abbreviation === "DEN"))
+              : null;
+            app.broncosGame = liveDenver ?? scheduled;
+          } else {
+            failures.push("Broncos schedule contained no usable game.");
+          }
+        } else {
+          failures.push(`Broncos schedule: ${scheduleResult.reason.message}`);
+        }
+
+        renderGameChoices();
+        let game = app.currentWeekGames.find((candidate) => candidate.id === app.selectedId) ??
+          (app.selectedId === "DEN" ? app.broncosGame : null);
+        if (game) game = await fillMissingTeamRecords(game, failures);
+        if (!game) {
+          app.driveState = {
+            eventId: "",
+            driveId: "",
+            possessionTeamId: "",
+            drive: null,
+            history: []
+          };
+        } else if (app.driveState.eventId !== game.id) {
+          app.driveState = restorePlayHistory(game.id);
+        }
+
+        if (game?.live) {
+          try {
+            const result = await getCurrentDrive(game.id, game.lastPlay);
+            const currentDrive = result.drive;
+            if (currentDrive) {
+              app.driveState = extendPlayHistory(game.id, currentDrive);
+            }
+            app.driveState.possessionTeamId = game.possessionTeamId ||
+              (game.teams.some((team) =>
+                team.id === currentDrive?.teamId) ? currentDrive.teamId : "");
+            updatePlayerSpotlight(game.id, currentDrive);
+            game = {
+              ...game,
+              possessionTeamId: app.driveState.possessionTeamId,
+              lastPlay: result.lastPlay,
+              drive: app.driveState.drive,
+              commentary: result.commentary
+            };
+          } catch (error) {
+            console.warn(`Could not load play-by-play for ${game.id}.`, error);
+            if (!game.lastPlay) failures.push(`Latest play unavailable: ${error.message}`);
+            game = { ...game, drive: app.driveState.drive };
+          }
+        } else if (game) {
+          updatePlayerSpotlight("", null);
+          game = { ...game, drive: app.driveState.drive };
+        }
+        app.currentGame = game ?? null;
+        updateMatchupTeamChoices(app.currentGame);
+        updateGameCard(app.currentGame);
+        maybeAnnounce(app.currentGame);
+
+        if (failures.length) {
+          setSyncStatus("Sync issue", "error", failures.join(" "));
+        } else {
+          setSyncStatus(`Updated ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }).format(new Date())}`, "synced");
+        }
+        app.refreshInProgress = false;
+      }
+
+      function restartRefreshTimer() {
+        if (app.refreshTimer) window.clearInterval(app.refreshTimer);
+        const seconds = Number(el("refresh-interval").value);
+        app.refreshTimer = window.setInterval(() => {
+          if (document.visibilityState === "visible") refresh();
+        }, seconds * 1000);
+      }
+
+      function fillVoiceList() {
+        if (!("speechSynthesis" in window)) {
+          el("voice-field").classList.add("hidden");
+          el("rate-field").classList.add("hidden");
+          audioMode.querySelector('option[value="speech"]').disabled = true;
+          audioMode.querySelector('option[value="both"]').disabled = true;
+          return;
+        }
+        const selected = readPreference("voice", "");
+        app.voices = window.speechSynthesis.getVoices();
+        voiceSelect.replaceChildren();
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = "System default voice";
+        voiceSelect.append(defaultOption);
+        for (const voice of app.voices) {
+          const option = document.createElement("option");
+          option.value = voice.voiceURI;
+          option.textContent = `${voice.name}${voice.lang ? ` (${voice.lang})` : ""}`;
+          voiceSelect.append(option);
+        }
+        voiceSelect.value = selected;
+      }
+
+      function setAudioStatus(text) {
+        audioStatus.textContent = text;
+      }
+
+      function prepareSpeechText(text) {
+        return text
+          .replace(/\b(?:[A-Z][a-z]{0,2}|[A-Z])\.(?=\s|[A-Z])\s*/g, "")
+          .replace(/\b(1st|2nd|3rd|4th)\s*&\s*(\d+)\b/g, (_, down, yards) => {
+            const spokenDown = { "1st": "first", "2nd": "second", "3rd": "third", "4th": "fourth" }[down];
+            return `${spokenDown} and ${yards}`;
+          })
+          .replace(/\b[A-Z]{2,3}\b/g, (abbreviation) =>
+            TEAM_SPEECH_NAMES[abbreviation] ?? abbreviation)
+          .replace(/\s+([,.;:!?])/g, "$1")
+          .replace(/([(\[])\s+/g, "$1")
+          .replace(/\s+([)\]])/g, "$1")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+      }
+
+      async function toggleAudio() {
+        if (app.audioEnabled) {
+          app.audioEnabled = false;
+          writePreference("audioEnabled", "false");
+          el("enable-audio").textContent = "Enable Audio";
+          el("enable-audio").setAttribute("aria-pressed", "false");
+          window.speechSynthesis?.cancel();
+          try {
+            if (app.audioContext?.state === "running") await app.audioContext.suspend();
+            setAudioStatus("Audio updates are switched off.");
+          } catch (error) {
+            console.warn("Could not suspend browser audio.", error);
+            setAudioStatus(`Audio is off, but the audio device could not be suspended: ${error.message}`);
+          }
+          return;
+        }
+
+        try {
+          const AudioContextType = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextType && !app.audioContext) app.audioContext = new AudioContextType();
+          if (app.audioContext?.state === "suspended") await app.audioContext.resume();
+          if (app.audioContext && app.audioContext.state !== "running") {
+            throw new Error("The browser requires a user gesture to resume audio.");
+          }
+          if (!app.audioContext && !("speechSynthesis" in window)) {
+            throw new Error("This browser does not support audio playback.");
+          }
+          app.audioEnabled = true;
+          writePreference("audioEnabled", "true");
+          el("enable-audio").textContent = "Audio Enabled";
+          el("enable-audio").setAttribute("aria-pressed", "true");
+          setAudioStatus("Audio is ready. Output follows the laptop's selected sound device.");
+          if (!("speechSynthesis" in window)) {
+            setAudioStatus("Sound effects are ready; this browser does not provide speech synthesis.");
+          }
+        } catch (error) {
+          app.audioEnabled = false;
+          el("enable-audio").textContent = "Enable Audio";
+          el("enable-audio").setAttribute("aria-pressed", "false");
+          writePreference("audioEnabled", "false");
+          console.warn("Could not enable browser audio.", error);
+          setAudioStatus(`Could not enable audio: ${error.message}`);
+        }
+      }
+
+      function speak(text) {
+        const speechModeEnabled = audioMode.value === "speech" ||
+          audioMode.value === "both";
+        if (!app.audioEnabled || !speechModeEnabled ||
+            !("speechSynthesis" in window)) {
+          if (!app.audioEnabled) setAudioStatus("Enable audio before play announcements can be heard.");
+          return;
+        }
+        if (window.speechSynthesis.speaking) {
+          setAudioStatus("Speech is still playing; skipped this play to avoid an announcement backlog.");
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(prepareSpeechText(text));
+        const voice = app.voices.find((candidate) => candidate.voiceURI === voiceSelect.value);
+        if (voice) utterance.voice = voice;
+        utterance.rate = Number(el("speech-rate").value);
+        utterance.onstart = () => setAudioStatus("Speaking latest play description.");
+        utterance.onerror = (event) => setAudioStatus(`Speech error: ${event.error}.`);
+        utterance.onend = () => setAudioStatus("Ready for the next play.");
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function tone(frequency, start, duration, type, peak, endFrequency = frequency) {
+        const context = app.audioContext;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, start);
+        oscillator.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), start + duration);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(peak, start + Math.min(.035, duration * .2));
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + duration + .02);
+      }
+
+      function playStinger(kind) {
+        if (!app.audioEnabled || !app.audioContext) {
+          if (!app.audioEnabled) setAudioStatus("Enable audio to hear key-play effects.");
+          return;
+        }
+        const now = app.audioContext.currentTime + .025;
+        if (kind === "touchdown") {
+          tone(220, now, .62, "sawtooth", .13, 660);
+          tone(330, now + .17, .72, "triangle", .09, 880);
+          tone(440, now + .36, .82, "sine", .08, 990);
+          tone(110, now, .38, "triangle", .12, 165);
+        } else if (kind === "turnover" || kind === "field-goal-missed" ||
+                   kind === "conversion-failed") {
+          tone(520, now, .4, "triangle", .14, 170);
+          tone(370, now + .13, .48, "sawtooth", .09, 95);
+          tone(82, now + .08, .5, "sine", .16, 42);
+        } else if (kind === "field-goal") {
+          tone(392, now, .34, "triangle", .1);
+          tone(494, now + .13, .38, "triangle", .1);
+          tone(659, now + .27, .6, "sine", .09, 784);
+        } else if (kind === "conversion") {
+          tone(440, now, .28, "triangle", .08);
+          tone(587, now + .14, .42, "sine", .09, 698);
+        } else if (kind === "first-down") {
+          tone(196, now, .24, "triangle", .1, 294);
+          tone(587, now + .15, .22, "sine", .08, 784);
+          tone(784, now + .28, .36, "triangle", .07, 988);
+        }
+        setAudioStatus(`${kind.replace("-", " ")} sound effect.`);
+      }
+
+      function playTest() {
+        if (!app.audioEnabled) {
+          setAudioStatus("Enable audio first, then test your laptop or Bluetooth speaker.");
+          return;
+        }
+        const mode = audioMode.value;
+        if (mode === "speech" || mode === "both") {
+          const team = rootingTeamSelect.value || favoriteTeamSelect.value;
+          const rootingTeam = app.currentGame?.teams.find((candidate) =>
+            candidate.abbreviation === team);
+          const firstPositivePhrase = getConfiguredPhrases(positivePhrases.value)[0];
+          const testSpeech = rootingPhrasesMode.value === "on" &&
+            rootingTeam && firstPositivePhrase
+            ? formatRootingPhrase(firstPositivePhrase, rootingTeam, "A positive play.")
+            : `${TEAM_SPEECH_NAMES[team] ?? "Denver"} football audio is ready.`;
+          speak(testSpeech);
+        }
+        if (mode === "effects" || mode === "both") playStinger("touchdown");
+        if (mode === "off") {
+          setAudioStatus("Audio updates are switched off.");
+        }
+      }
+
+      gameSelect.addEventListener("change", () => {
+        app.selectedId = gameSelect.value;
+        writePreference("selectedGame", app.selectedId);
+        refresh();
+      });
+      settingsPanel.open = false;
+      el("keep-awake-button").addEventListener("click", toggleScreenWakeLock);
+      const historyPlayCount = el("history-play-count");
+      const savedHistoryPlayCount = Number(readPreference(
+        "historyPlayCount",
+        String(DEFAULT_HISTORY_PLAY_COUNT)
+      ));
+      historyPlayCount.value = String(HISTORY_PLAY_COUNT_OPTIONS.includes(savedHistoryPlayCount)
+        ? savedHistoryPlayCount
+        : DEFAULT_HISTORY_PLAY_COUNT);
+      historyPlayCount.addEventListener("change", () => {
+        writePreference("historyPlayCount", historyPlayCount.value);
+        if (app.currentGame) renderDriveChart(app.currentGame.drive, app.currentGame);
+      });
+      const refreshInterval = el("refresh-interval");
+      const savedRefreshInterval = Number(readPreference(
+        "refreshInterval",
+        String(DEFAULT_REFRESH_INTERVAL_SECONDS)
+      ));
+      refreshInterval.value = String(REFRESH_INTERVAL_OPTIONS.includes(savedRefreshInterval)
+        ? savedRefreshInterval
+        : DEFAULT_REFRESH_INTERVAL_SECONDS);
+      refreshInterval.addEventListener("change", () => {
+        writePreference("refreshInterval", refreshInterval.value);
+        restartRefreshTimer();
+        refresh();
+      });
+      el("enable-audio").setAttribute("aria-pressed", "false");
+      el("enable-audio").addEventListener("click", () => toggleAudio());
+      el("test-audio").addEventListener("click", playTest);
+      populateFavoriteTeams();
+      updateMatchupTeamChoices(null);
+      favoriteTeamSelect.addEventListener("change", () => {
+        writePreference("favoriteTeam", favoriteTeamSelect.value);
+        updateMatchupTeamChoices(app.currentGame);
+        renderGameChoices();
+      });
+      rootingTeamSelect.addEventListener("change", () => {
+        if (app.currentGame) {
+          writePreference(
+            rootingTeamPreferenceKey(app.currentGame),
+            rootingTeamSelect.value
+          );
+          const selectedTeam = app.currentGame.teams.find((team) =>
+            team.abbreviation === rootingTeamSelect.value);
+          applyTeamTheme(selectedTeam);
+        }
+      });
+      rootingPhrasesMode.value = readPreference("rootingPhrasesMode", "off") === "on"
+        ? "on"
+        : "off";
+      positivePhrases.value = readPreference(
+        "positivePhrases",
+        DEFAULT_POSITIVE_PHRASES
+      );
+      negativePhrases.value = readPreference(
+        "negativePhrases",
+        DEFAULT_NEGATIVE_PHRASES
+      );
+      const updateRootingPhraseFields = () => {
+        writePreference("rootingPhrasesMode", rootingPhrasesMode.value);
+        el("rooting-phrase-fields").classList.toggle(
+          "hidden",
+          rootingPhrasesMode.value !== "on"
+        );
+      };
+      rootingPhrasesMode.addEventListener("change", updateRootingPhraseFields);
+      positivePhrases.addEventListener("change", () =>
+        writePreference("positivePhrases", positivePhrases.value));
+      negativePhrases.addEventListener("change", () =>
+        writePreference("negativePhrases", negativePhrases.value));
+      updateRootingPhraseFields();
+      audioMode.value = readPreference("audioMode", "effects");
+      audioMode.addEventListener("change", () => {
+        writePreference("audioMode", audioMode.value);
+        if (audioMode.value !== "speech" && audioMode.value !== "both") {
+          window.speechSynthesis?.cancel();
+        }
+        el("voice-field").classList.toggle("hidden", audioMode.value === "effects" || audioMode.value === "off");
+        el("rate-field").classList.toggle("hidden", audioMode.value === "effects" || audioMode.value === "off");
+      });
+      voiceSelect.addEventListener("change", () => writePreference("voice", voiceSelect.value));
+      el("speech-rate").value = readPreference("speechRate", "1");
+      el("rate-value").textContent = `${Number(el("speech-rate").value).toFixed(1)}×`;
+      el("speech-rate").addEventListener("input", () => {
+        el("rate-value").textContent = `${Number(el("speech-rate").value).toFixed(1)}×`;
+        writePreference("speechRate", el("speech-rate").value);
+      });
+      const playerDetailsDuration = el("player-details-duration");
+      const savedPlayerDetailsDuration = Number(readPreference("playerDetailsDuration", "10"));
+      playerDetailsDuration.value = String(Number.isFinite(savedPlayerDetailsDuration)
+        ? Math.min(60, Math.max(1, Math.round(savedPlayerDetailsDuration)))
+        : 10);
+      const playerDetailsMode = el("player-details-mode");
+      const savedPlayerDetailsMode = readPreference("playerDetailsMode", "until-next-play");
+      playerDetailsMode.value = ["until-next-play", "timed"].includes(savedPlayerDetailsMode)
+        ? savedPlayerDetailsMode
+        : "until-next-play";
+      const updatePlayerDetailsMode = () => {
+        el("player-details-duration-field").classList.toggle(
+          "hidden",
+          playerDetailsMode.value !== "timed"
+        );
+        writePreference("playerDetailsMode", playerDetailsMode.value);
+        const state = app.playerSpotlight;
+        if (playerDetailsMode.value === "until-next-play") {
+          if (state.timerId) window.clearTimeout(state.timerId);
+          state.timerId = 0;
+          state.pending = [];
+        } else {
+          showNextPlayerSpotlight();
+        }
+      };
+      playerDetailsMode.addEventListener("change", updatePlayerDetailsMode);
+      updatePlayerDetailsMode();
+      const extraCommentary = el("extra-commentary");
+      extraCommentary.value = readPreference("extraCommentary", "off") === "on"
+        ? "on"
+        : "off";
+      extraCommentary.addEventListener("change", () => {
+        writePreference("extraCommentary", extraCommentary.value);
+        renderExtraCommentary(app.currentGame?.commentary ?? []);
+      });
+      playerDetailsDuration.addEventListener("change", () => {
+        const duration = Number(playerDetailsDuration.value);
+        playerDetailsDuration.value = String(Number.isFinite(duration)
+          ? Math.min(60, Math.max(1, Math.round(duration)))
+          : 10);
+        writePreference("playerDetailsDuration", playerDetailsDuration.value);
+        if (app.playerSpotlight.timerId) {
+          window.clearTimeout(app.playerSpotlight.timerId);
+          app.playerSpotlight.timerId = 0;
+          showNextPlayerSpotlight();
+        }
+      });
+      window.addEventListener("online", () => {
+        updateNetworkStatus();
+        refresh();
+      });
+      window.addEventListener("offline", updateNetworkStatus);
+      window.addEventListener("resize", () => {
+        if (app.currentGame) renderDriveChart(app.currentGame.drive, app.currentGame);
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          if (app.keepAwakeRequested) requestScreenWakeLock();
+          refresh();
+        }
+      });
+      window.addEventListener("focus", () => {
+        if (document.visibilityState === "visible") refresh();
+      });
+
+      app.selectedId = readPreference("selectedGame", "DEN");
+      updateNetworkStatus();
+      fillVoiceList();
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.addEventListener?.("voiceschanged", fillVoiceList);
+        window.speechSynthesis.onvoiceschanged = fillVoiceList;
+      }
+      audioMode.dispatchEvent(new Event("change"));
+      if (!app.storageAvailable) {
+        setSyncStatus("Ready", "", "Browser storage is unavailable; game and audio preferences may not persist.");
+      }
+      app.keepAwakeRequested = readPreference("keepAwake", "false") === "true";
+      if (app.keepAwakeRequested) {
+        el("keep-awake-button").setAttribute("aria-pressed", "true");
+        el("keep-awake-button").textContent = "Screen awake requested";
+      }
+      app.kickoffCountdownTimer = window.setInterval(
+        () => updateKickoffCountdown(app.currentGame),
+        1000
+      );
+      refresh();
+      if (app.keepAwakeRequested) requestScreenWakeLock();
+      if (readPreference("audioEnabled", "false") === "true") {
+        app.audioEnabled = false;
+        el("enable-audio").textContent = "Enable Audio";
+        el("enable-audio").setAttribute("aria-pressed", "false");
+        setAudioStatus("Audio is saved as enabled. Click Enable Audio to activate it after refresh.");
+      }
+      restartRefreshTimer();
+    })();
+  </script>
+</body>
+</html>
