@@ -132,9 +132,9 @@ provides it. When an upcoming game is selected, the scoreboard shows a live
 countdown to its scheduled kickoff; it changes to the game status when ESPN
 reports that play has started. ESPN's broadcast network appears in the game
 selector and beneath the selected game's status when the feed provides it.
-The live-game badge sits beside the network and ESPN synchronization
-indicators. Each team record appears beside its abbreviation. Network
-connectivity and ESPN synchronization status are shown separately.
+Each team record appears beside its abbreviation. Offline or ESPN refresh
+errors appear only when they need attention; routine network and refresh-time
+indicators are omitted to preserve screen space.
 
 The chart lays each of the selected number of most recent plays horizontally on
 a football field. It keeps recent plays across possession changes, turnovers,
